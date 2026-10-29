@@ -1,18 +1,123 @@
 {
   "indexes": [
-    {"collectionGroup":"memberships","queryScope":"COLLECTION_GROUP","fields":[{"fieldPath":"uid","order":"ASCENDING"},{"fieldPath":"joinedAt","order":"DESCENDING"}]},
-    {"collectionGroup":"joinRequests","queryScope":"COLLECTION_GROUP","fields":[{"fieldPath":"uid","order":"ASCENDING"},{"fieldPath":"status","order":"ASCENDING"},{"fieldPath":"requestedAt","order":"DESCENDING"}]},
-    {"collectionGroup":"joinRequests","queryScope":"COLLECTION","fields":[{"fieldPath":"status","order":"ASCENDING"},{"fieldPath":"requestedAt","order":"ASCENDING"}]},
-    {"collectionGroup":"activities","queryScope":"COLLECTION","fields":[{"fieldPath":"groupId","order":"ASCENDING"},{"fieldPath":"createdAt","order":"DESCENDING"}]},
-    {"collectionGroup":"activities","queryScope":"COLLECTION","fields":[{"fieldPath":"groupId","order":"ASCENDING"},{"fieldPath":"status","order":"ASCENDING"},{"fieldPath":"createdAt","order":"DESCENDING"}]},
-    {"collectionGroup":"applications","queryScope":"COLLECTION","fields":[{"fieldPath":"status","order":"ASCENDING"},{"fieldPath":"submittedAt","order":"ASCENDING"}]}
+    {
+      "collectionGroup": "memberships",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "userId",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "status",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "updatedAt",
+          "order": "DESCENDING"
+        }
+      ]
+    },
+    {
+      "collectionGroup": "memberships",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "groupId",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "status",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "createdAt",
+          "order": "ASCENDING"
+        }
+      ]
+    },
+    {
+      "collectionGroup": "activities",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "groupId",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "status",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "createdAt",
+          "order": "DESCENDING"
+        }
+      ]
+    },
+    {
+      "collectionGroup": "registrations",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "activityId",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "status",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "submittedAt",
+          "order": "ASCENDING"
+        }
+      ]
+    },
+    {
+      "collectionGroup": "drafts",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "activityId",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "createdAt",
+          "order": "DESCENDING"
+        }
+      ]
+    },
+    {
+      "collectionGroup": "placementPreferences",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "userId",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "groupId",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "active",
+          "order": "ASCENDING"
+        }
+      ]
+    },
+    {
+      "collectionGroup": "notifications",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "userId",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "createdAt",
+          "order": "DESCENDING"
+        }
+      ]
+    }
   ],
-  "fieldOverrides": [
-    {"collectionGroup":"applications","fieldPath":"answers","indexes":[]},
-    {"collectionGroup":"drafts","fieldPath":"enginePublic","indexes":[]},
-    {"collectionGroup":"drafts","fieldPath":"editedTeams","indexes":[]},
-    {"collectionGroup":"publications","fieldPath":"teams","indexes":[]},
-    {"collectionGroup":"publications","fieldPath":"displayProfiles","indexes":[]},
-    {"collectionGroup":"groups","fieldPath":"targets","indexes":[]}
-  ]
+  "fieldOverrides": []
 }

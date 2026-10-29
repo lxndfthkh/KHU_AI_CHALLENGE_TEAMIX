@@ -2,31 +2,27 @@ import { readFileSync } from 'node:fs';
 import { before, beforeEach, after, test } from 'node:test';
 import assert from 'node:assert/strict';
 import { initializeTestEnvironment, assertFails, assertSucceeds } from '@firebase/rules-unit-testing';
-import { doc, setDoc, getDoc, getDocs, updateDoc, deleteDoc, writeBatch,
-  collectionGroup, query, where, orderBy, Timestamp, serverTimestamp } from 'firebase/firestore';
+import { doc, setDoc, getDoc, getDocs, updateDoc, deleteDoc, collection,
+  query, where, Timestamp, serverTimestamp } from 'firebase/firestore';
 
+// Paths and fields follow firestore.schema.json / docs/FIRESTORE.md.
 let env;
 const old = Timestamp.fromMillis(1000);
 const future = Timestamp.fromMillis(4102444800000);
 const db = (uid) => env.authenticatedContext(uid).firestore();
+const anon = () => env.unauthenticatedContext().firestore();
 const ref = (store, path) => doc(store, path);
-const group = { name: '메이커스', description: '시연', ownerUid: 'owner', createdAt: old };
-const membership = (uid, role = 'member') => ({ uid, groupId: 'g', nickname: uid, role, joinedAt: old });
-const questions = { selected: ['role', 'time', 'experience', 'interest'],
-  roleOptions: ['개발'], timeOptions: ['수 저녁'], interestOptions: ['앱'] };
-const settings = { teamCount: 1, teamCapacities: [{ teamId: 'team_1', capacity: 20 }],
-  method: 'balanced', priority: ['role', 'time', 'experience', 'interest', 'size'], requireCommonTime: false };
-const activity = (extra = {}) => ({ groupId: 'g', title: '활동', description: '', goal: '',
-  recruitmentCapacity: 20, applicationCount: 0, deadline: future, status: 'recruiting',
-  questions, matchingSettings: settings, settingsVersion: 1, responseVersion: 0,
-  currentPublicationId: null, publicationVersion: 0, createdBy: 'owner', createdAt: old, updatedAt: old, ...extra });
-const application = (uid, extra = {}) => ({ uid, groupId: 'g', status: 'submitted',
-  answers: { role: '개발', time: ['수 저녁'], experience: 3, interest: ['앱'] },
-  nicknameSnapshot: uid, submittedAt: serverTimestamp(), updatedAt: serverTimestamp(), ...extra });
-const request = (uid, extra = {}) => ({ uid, groupId: 'g', groupName: group.name, nickname: uid, status: 'pending',
-  requestedAt: old, reviewedAt: null, reviewedBy: null, inviteId: 'i', ...extra });
-const preference = (targets = [{ targetUid: 'other', confirmed: true }]) => ({
-  authorUid: 'member', groupId: 'g', targets, updatedAt: serverTimestamp() });
+
+const membership = (uid, role, status = 'approved', groupId = 'g') => ({
+  groupId, userId: uid, displayName: uid, role, status, createdAt: old, updatedAt: old });
+// uid -> [role, status] in group g; `outsider` has no membership.
+const members = {
+  admin: ['admin', 'approved'],
+  member: ['member', 'approved'],
+  other: ['member', 'approved'],
+  applicant: ['member', 'pending'],
+  rejected: ['member', 'rejected'],
+};
 
 before(async () => {
   // Never silently connect to a production project.
@@ -39,237 +35,168 @@ beforeEach(async () => {
   await env.withSecurityRulesDisabled(async (context) => {
     const s = context.firestore();
     await Promise.all([
-      setDoc(ref(s, 'groups/g'), group),
-      ...['owner', 'admin', 'member', 'other'].map((uid) => setDoc(
-        ref(s, `groups/g/memberships/${uid}`), membership(uid, uid === 'owner' ? 'owner' : uid === 'admin' ? 'admin' : 'member'))),
-      setDoc(ref(s, 'activities/a'), activity()),
-      setDoc(ref(s, 'groups/g/invites/i'), { code: 'TEAM24', enabled: true, expiresAt: future, createdAt: old }),
-      setDoc(ref(s, 'inviteCodes/TEAM24'), { groupId: 'g', inviteId: 'i' }),
-      setDoc(ref(s, 'groups/g/joinRequests/applicant'), request('applicant')),
-      setDoc(ref(s, 'activities/a/drafts/d'), { createdBy: 'owner', createdAt: old,
-        enginePublic: { status: 'FEASIBLE', teams: [] }, conditionsSnapshot: {}, editedTeams: null,
-        sourceResponseVersion: 0, sourceSettingsVersion: 1, revision: 0 }),
-      setDoc(ref(s, 'privatePreferences/member/groups/g'), { ...preference(), updatedAt: old }),
+      setDoc(ref(s, 'users/member'), { displayName: 'member', createdAt: old, updatedAt: old }),
+      setDoc(ref(s, 'groups/g'), { name: '메이커스', description: '시연', ownerId: 'admin',
+        themeColor: 'mint', status: 'active', createdAt: old, updatedAt: old }),
+      ...Object.entries(members).map(([uid, [role, status]]) =>
+        setDoc(ref(s, `memberships/g_${uid}`), membership(uid, role, status))),
+      setDoc(ref(s, 'invitations/hash'), { groupId: 'g', expiresAt: future, active: true, createdBy: 'admin', createdAt: old }),
+      setDoc(ref(s, 'activities/a'), { groupId: 'g', title: '활동', description: '', createdBy: 'admin',
+        themeColor: 'mint', capacity: 20, targetTeamSize: 4, deadlineAt: future, status: 'recruiting',
+        createdAt: old, updatedAt: old }),
+      setDoc(ref(s, 'activities/a/settings/matching'), { method: 'balanced' }),
+      setDoc(ref(s, 'activities/a/questions/q1'), { type: 'role' }),
+      setDoc(ref(s, 'activities/a/feedbackSummary/current'), { average: 4 }),
+      setDoc(ref(s, 'registrations/a_member'), { activityId: 'a', groupId: 'g', userId: 'member',
+        status: 'submitted', answers: {}, submittedAt: old, updatedAt: old }),
+      setDoc(ref(s, 'registrations/a_other'), { activityId: 'a', groupId: 'g', userId: 'other',
+        status: 'cancelled', answers: {}, submittedAt: old, updatedAt: old }),
+      setDoc(ref(s, 'drafts/d'), { activityId: 'a', groupId: 'g', version: 1, teams: [], status: 'ready',
+        createdAt: old, updatedAt: old }),
+      setDoc(ref(s, 'publications/a_v1'), { activityId: 'a', groupId: 'g', version: 1, teams: [],
+        publishedBy: 'admin', publishedAt: old }),
+      setDoc(ref(s, 'teamViews/a_member'), { activityId: 'a', groupId: 'g', userId: 'member', version: 1,
+        teamId: 't1', members: [], commonTimes: [], compositionChanged: false, publishedAt: old }),
+      setDoc(ref(s, 'teamViews/a_other'), { activityId: 'a', groupId: 'g', userId: 'other', version: 1,
+        teamId: 't1', members: [], commonTimes: [], compositionChanged: false, publishedAt: old }),
+      setDoc(ref(s, 'feedback/a_member'), { activityId: 'a', groupId: 'g', userId: 'member', teamId: 't1',
+        rating: 5, createdAt: old }),
+      setDoc(ref(s, 'placementPreferences/g_member_other'), { groupId: 'g', userId: 'member',
+        targetUserId: 'other', active: true, createdAt: old, updatedAt: old }),
+      setDoc(ref(s, 'notifications/n'), { userId: 'member', type: 'joinApproved', groupId: 'g',
+        createdAt: old, readAt: null }),
+      setDoc(ref(s, 'appConfig/teamix'), { palette: ['mint', 'peach', 'lilac'] }),
+      setDoc(ref(s, '_schema/users'), { path: 'users/{authUid}' }),
     ]);
   });
 });
 after(async () => { if (env) await env.cleanup(); });
 
-async function seed(path, data) {
-  await env.withSecurityRulesDisabled((context) => setDoc(ref(context.firestore(), path), data));
-}
-function submit(s, { count = 1, extra = {}, uid = 'member', answers } = {}) {
-  const batch = writeBatch(s);
-  batch.set(ref(s, `activities/a/applications/${uid}`), application(uid, answers ? { answers } : {}));
-  batch.update(ref(s, 'activities/a'), { applicationCount: count, responseVersion: 1, ...extra });
-  return batch.commit();
-}
+test('사용자는 본인 프로필만 읽고, 허용된 필드로만 만들고 고친다', async () => {
+  await assertSucceeds(getDoc(ref(db('member'), 'users/member')));
+  await assertFails(getDoc(ref(db('other'), 'users/member')));
+  await assertSucceeds(setDoc(ref(db('other'), 'users/other'),
+    { displayName: 'other', createdAt: serverTimestamp(), updatedAt: serverTimestamp() }));
+  await assertFails(setDoc(ref(db('outsider'), 'users/outsider'),
+    { displayName: 'x', createdAt: serverTimestamp(), updatedAt: serverTimestamp(), role: 'admin' }));
+  await assertFails(setDoc(ref(db('outsider'), 'users/other2'),
+    { displayName: 'x', createdAt: serverTimestamp(), updatedAt: serverTimestamp() }));
+  await assertSucceeds(updateDoc(ref(db('member'), 'users/member'), { displayName: '새 이름', updatedAt: serverTimestamp() }));
+  await assertFails(updateDoc(ref(db('member'), 'users/member'), { createdAt: serverTimestamp(), updatedAt: serverTimestamp() }));
+  await assertFails(deleteDoc(ref(db('member'), 'users/member')));
+});
 
-test('부원은 본인 가입 요청을 승인할 수 없다', async () => {
-  const s = db('applicant');
-  const batch = writeBatch(s);
-  batch.update(ref(s, 'groups/g/joinRequests/applicant'), { status: 'approved', reviewedAt: serverTimestamp(), reviewedBy: 'applicant' });
-  batch.set(ref(s, 'groups/g/memberships/applicant'), { ...membership('applicant'), joinedAt: serverTimestamp() });
-  await assertFails(batch.commit());
-});
-test('남의 기존 모임에 대표자 회원 문서를 만들 수 없다', async () => {
-  const s = db('intruder');
-  await assertFails(setDoc(ref(s, 'groups/g/memberships/intruder'), {
-    ...membership('intruder', 'owner'), joinedAt: serverTimestamp() }));
-});
-test('새 모임과 본인 대표자 문서는 같은 배치에서만 생성된다', async () => {
-  const s = db('founder');
-  const batch = writeBatch(s);
-  batch.set(ref(s, 'groups/new'), { ...group, ownerUid: 'founder', createdAt: serverTimestamp() });
-  batch.set(ref(s, 'groups/new/memberships/founder'), {
-    ...membership('founder', 'owner'), groupId: 'new', joinedAt: serverTimestamp() });
-  await assertSucceeds(batch.commit());
-});
-test('운영자와 다른 회원은 비공개 선호를 읽지 못한다', async () => {
-  for (const uid of ['owner', 'admin', 'other']) {
-    await assertFails(getDoc(ref(db(uid), 'privatePreferences/member/groups/g')));
+test('모임은 승인된 회원만 읽고 클라이언트는 쓸 수 없다', async () => {
+  await assertSucceeds(getDoc(ref(db('member'), 'groups/g')));
+  for (const uid of ['applicant', 'rejected', 'outsider']) {
+    await assertFails(getDoc(ref(db(uid), 'groups/g')));
   }
-  await assertSucceeds(getDoc(ref(db('member'), 'privatePreferences/member/groups/g')));
-});
-test('비공개 선호는 최대 두 명이며 중복과 자기 지정이 금지된다', async () => {
-  const s = db('member');
-  await assertFails(setDoc(ref(s, 'privatePreferences/member/groups/g'), preference([
-    { targetUid: 'other', confirmed: true }, { targetUid: 'other', confirmed: true }])));
-  await assertFails(setDoc(ref(s, 'privatePreferences/member/groups/g'), preference([{ targetUid: 'member', confirmed: true }])));
-  await assertFails(setDoc(ref(s, 'privatePreferences/member/groups/g'), preference([
-    { targetUid: 'other', confirmed: true }, { targetUid: 'owner', confirmed: true }, { targetUid: 'admin', confirmed: true }])));
-  await assertSucceeds(setDoc(ref(s, 'privatePreferences/member/groups/g'), preference([])));
-  await assertSucceeds(deleteDoc(ref(s, 'privatePreferences/member/groups/g')));
-});
-test('부원은 초안을 읽지 못하고 운영자는 읽을 수 있다', async () => {
-  await assertFails(getDoc(ref(db('member'), 'activities/a/drafts/d')));
-  await assertSucceeds(getDoc(ref(db('admin'), 'activities/a/drafts/d')));
-});
-test('마감 이후 설문 제출 실패', async () => {
-  await seed('activities/a', activity({ deadline: old }));
-  await assertFails(submit(db('member')));
-});
-test('정상 신청은 카운터와 함께 성공한다', async () => {
-  await assertSucceeds(submit(db('member')));
-});
-test('신청 문서만 쓰거나 카운터만 쓰면 실패한다', async () => {
-  const s = db('member');
-  await assertFails(setDoc(ref(s, 'activities/a/applications/member'), application('member')));
-  await assertFails(updateDoc(ref(s, 'activities/a'), { applicationCount: 1, responseVersion: 1 }));
-});
-test('부원은 신청 수를 +2 하거나 다른 필드를 바꿀 수 없다', async () => {
-  await assertFails(submit(db('member'), { count: 2 }));
-  await assertFails(submit(db('member'), { extra: { title: '변조' } }));
-  await assertFails(submit(db('member'), { extra: { updatedAt: serverTimestamp() } }));
-  await assertFails(submit(db('member'), { extra: { responseVersion: 2 } }));
-});
-test('본인이 아닌 신청 및 선택지 밖 응답은 거부된다', async () => {
-  await assertFails(submit(db('member'), { uid: 'other' }));
-  await assertFails(submit(db('member'), { answers: { role: '미지원', time: ['수 저녁'], experience: 3, interest: ['앱'] } }));
-});
-test('응답 수정은 인원 유지와 버전 +1, 취소는 인원 -1과 버전 +1', async () => {
-  const s = db('member');
-  await assertSucceeds(submit(s));
-  let batch = writeBatch(s);
-  batch.update(ref(s, 'activities/a/applications/member'), {
-    'answers.experience': 4, updatedAt: serverTimestamp() });
-  batch.update(ref(s, 'activities/a'), { responseVersion: 2 });
-  await assertSucceeds(batch.commit());
-  batch = writeBatch(s);
-  batch.update(ref(s, 'activities/a/applications/member'), { status: 'withdrawn', updatedAt: serverTimestamp() });
-  batch.update(ref(s, 'activities/a'), { applicationCount: 0, responseVersion: 3 });
-  await assertSucceeds(batch.commit());
-});
-test('운영자 승인은 요청과 회원 생성이 함께 필요하다', async () => {
-  const s = db('admin');
-  await assertFails(updateDoc(ref(s, 'groups/g/joinRequests/applicant'), {
-    status: 'approved', reviewedAt: serverTimestamp(), reviewedBy: 'admin' }));
-  const batch = writeBatch(s);
-  batch.update(ref(s, 'groups/g/joinRequests/applicant'), { status: 'approved', reviewedAt: serverTimestamp(), reviewedBy: 'admin' });
-  batch.set(ref(s, 'groups/g/memberships/applicant'), { ...membership('applicant'), joinedAt: serverTimestamp() });
-  await assertSucceeds(batch.commit());
-});
-test('거절된 사용자는 유효 초대로 재요청할 수 있다', async () => {
-  await seed('groups/g/joinRequests/applicant', request('applicant', { status: 'rejected', reviewedAt: old, reviewedBy: 'owner' }));
-  await assertSucceeds(setDoc(ref(db('applicant'), 'groups/g/joinRequests/applicant'),
-    request('applicant', { requestedAt: serverTimestamp() })));
-});
-test('신청 후 질문 변경 및 대표자 승격은 거부된다', async () => {
-  await seed('activities/a', activity({ applicationCount: 1 }));
-  await assertFails(updateDoc(ref(db('owner'), 'activities/a'), {
-    questions: { ...questions, selected: ['role'] }, matchingSettings: { ...settings, priority: ['role', 'size'] },
-    settingsVersion: 2, updatedAt: serverTimestamp() }));
-  await assertFails(updateDoc(ref(db('admin'), 'groups/g/memberships/member'), { role: 'owner' }));
-});
-test('공개는 스냅샷과 포인터를 원자적으로 생성하며 과거 회차는 차단된다', async () => {
-  await seed('activities/a', activity({ status: 'closed' }));
-  const s = db('owner');
-  const pub = { version: 1, sourceDraftId: 'd', publishedBy: 'owner', publishedAt: serverTimestamp(),
-    teams: [{ teamId: 'team_1', participants: ['member'] }], displayProfiles: { member: '가온' } };
-  await assertFails(setDoc(ref(s, 'activities/a/publications/p1'), pub));
-  let batch = writeBatch(s);
-  batch.set(ref(s, 'activities/a/publications/p1'), pub);
-  batch.update(ref(s, 'activities/a'), { currentPublicationId: 'p1', publicationVersion: 1, updatedAt: serverTimestamp() });
-  await assertSucceeds(batch.commit());
-  await assertFails(getDoc(ref(db('other'), 'activities/a/publications/p1')));
-  await seed('activities/a/applications/member', application('member', { submittedAt: old, updatedAt: old }));
-  await assertSucceeds(getDoc(ref(db('member'), 'activities/a/publications/p1')));
-  await assertFails(updateDoc(ref(db('member'), 'activities/a/applications/member'), { status: 'withdrawn', updatedAt: serverTimestamp() }));
-  batch = writeBatch(s);
-  batch.set(ref(s, 'activities/a/publications/p2'), { ...pub, version: 2 });
-  batch.update(ref(s, 'activities/a'), { currentPublicationId: 'p2', publicationVersion: 2, updatedAt: serverTimestamp() });
-  await assertSucceeds(batch.commit());
-  await assertFails(getDoc(ref(s, 'activities/a/publications/p1')));
-  await assertSucceeds(getDoc(ref(s, 'activities/a/publications/p2')));
-  await assertSucceeds(deleteDoc(ref(db('member'), 'groups/g/memberships/member')));
-  await assertFails(getDoc(ref(db('member'), 'activities/a/publications/p2')));
-});
-test('collectionGroup 조회는 본인 uid 조건이 필요하다', async () => {
-  const s = db('member');
-  await assertSucceeds(getDocs(query(collectionGroup(s, 'memberships'), where('uid', '==', 'member'), orderBy('joinedAt', 'desc'))));
-  await assertFails(getDocs(collectionGroup(s, 'memberships')));
-  await assertSucceeds(getDocs(query(collectionGroup(db('applicant'), 'joinRequests'),
-    where('uid', '==', 'applicant'), where('status', '==', 'pending'), orderBy('requestedAt', 'desc'))));
+  await assertFails(getDoc(ref(anon(), 'groups/g')));
+  await assertFails(updateDoc(ref(db('admin'), 'groups/g'), { name: '변경' }));
+  await assertFails(setDoc(ref(db('outsider'), 'groups/new'), { name: '새 모임' }));
 });
 
-const manyQuestions = {
-  ...questions,
-  roleOptions: ['개발', ...Array.from({ length: 9 }, (_, i) => `역할${i}`)],
-  timeOptions: ['수 저녁', ...Array.from({ length: 9 }, (_, i) => `시간${i}`)],
-  interestOptions: ['앱', ...Array.from({ length: 9 }, (_, i) => `관심${i}`)],
-};
+test('멤버십: 본인 것, 운영진은 전체, 회원은 승인된 회원만 읽는다', async () => {
+  await assertSucceeds(getDoc(ref(db('applicant'), 'memberships/g_applicant')));
+  await assertSucceeds(getDoc(ref(db('admin'), 'memberships/g_applicant')));
+  await assertSucceeds(getDoc(ref(db('member'), 'memberships/g_other')));
+  await assertFails(getDoc(ref(db('member'), 'memberships/g_applicant')));
+  await assertFails(getDoc(ref(db('applicant'), 'memberships/g_member')));
+  await assertFails(getDoc(ref(db('outsider'), 'memberships/g_member')));
+});
 
-test('각 질문 선택지가 10개인 소모임에서 정상 신청이 성공한다', async () => {
-  await seed('activities/a', activity({ questions: manyQuestions }));
-  await assertSucceeds(submit(db('member')));
-  const snapshot = await getDoc(ref(db('member'), 'activities/a'));
-  assert.equal(snapshot.data().applicationCount, 1);
-  assert.equal(snapshot.data().responseVersion, 1);
-});
-test('운영자는 선택지가 많은 소모임 제목을 수정할 수 있다', async () => {
-  await seed('activities/a', activity({ questions: manyQuestions }));
-  await assertSucceeds(updateDoc(ref(db('owner'), 'activities/a'), {
-    title: '수정된 제목', updatedAt: serverTimestamp(),
-  }));
-});
-test('가입 대기 화면은 재요청 문서의 groupName을 읽는다', async () => {
-  await seed('groups/g/joinRequests/applicant', request('applicant', {
-    status: 'rejected', reviewedAt: old, reviewedBy: 'owner',
-  }));
+test('홈 화면 조회: 본인 멤버십만 status로 걸러 조회할 수 있다', async () => {
   const s = db('applicant');
-  await assertSucceeds(setDoc(ref(s, 'groups/g/joinRequests/applicant'),
-    request('applicant', { requestedAt: serverTimestamp() })));
-  const snapshot = await assertSucceeds(getDoc(ref(s, 'groups/g/joinRequests/applicant')));
-  assert.equal(snapshot.data().groupName, group.name);
-  assert.equal(snapshot.data().status, 'pending');
-  await assertFails(getDoc(ref(s, 'groups/g')));
+  const mine = query(collection(s, 'memberships'), where('userId', '==', 'applicant'),
+    where('status', 'in', ['approved', 'pending']));
+  const result = await assertSucceeds(getDocs(mine));
+  assert.equal(result.size, 1);
+  await assertFails(getDocs(query(collection(s, 'memberships'), where('groupId', '==', 'g'))));
 });
-test('가입 요청의 groupName은 필수이며 1~100자 문자열이다', async () => {
-  const s = db('applicant');
-  await seed('groups/g/joinRequests/applicant', request('applicant', { status: 'rejected' }));
-  for (const value of [undefined, '', '가'.repeat(101), 123]) {
-    const data = request('applicant', { requestedAt: serverTimestamp(), groupName: value });
-    if (value === undefined) delete data.groupName;
-    await assertFails(setDoc(ref(s, 'groups/g/joinRequests/applicant'), data));
+
+test('멤버십은 클라이언트가 만들거나 역할을 올릴 수 없다', async () => {
+  await assertFails(setDoc(ref(db('outsider'), 'memberships/g_outsider'), membership('outsider', 'member', 'pending')));
+  await assertFails(updateDoc(ref(db('member'), 'memberships/g_member'), { role: 'admin' }));
+  await assertFails(updateDoc(ref(db('admin'), 'memberships/g_applicant'), { status: 'approved' }));
+  await assertFails(deleteDoc(ref(db('member'), 'memberships/g_member')));
+});
+
+test('초대 토큰은 누구도 직접 읽거나 쓸 수 없다', async () => {
+  await assertFails(getDoc(ref(db('admin'), 'invitations/hash')));
+  await assertFails(getDocs(collection(db('admin'), 'invitations')));
+  await assertFails(setDoc(ref(db('admin'), 'invitations/new'), { groupId: 'g' }));
+});
+
+test('소모임: 회원은 본문과 질문, 운영진만 편성 설정과 후기 집계를 읽는다', async () => {
+  await assertSucceeds(getDoc(ref(db('member'), 'activities/a')));
+  await assertSucceeds(getDoc(ref(db('member'), 'activities/a/questions/q1')));
+  await assertFails(getDoc(ref(db('member'), 'activities/a/settings/matching')));
+  await assertFails(getDoc(ref(db('member'), 'activities/a/feedbackSummary/current')));
+  await assertSucceeds(getDoc(ref(db('admin'), 'activities/a/settings/matching')));
+  await assertSucceeds(getDoc(ref(db('admin'), 'activities/a/feedbackSummary/current')));
+  await assertFails(getDoc(ref(db('applicant'), 'activities/a')));
+  await assertFails(getDoc(ref(db('outsider'), 'activities/a/questions/q1')));
+  await assertFails(updateDoc(ref(db('admin'), 'activities/a'), { capacity: 30 }));
+  await assertFails(setDoc(ref(db('admin'), 'activities/a/questions/q2'), { type: 'time' }));
+});
+
+test('참가 신청: 본인과 운영진만 읽고 클라이언트는 쓸 수 없다', async () => {
+  await assertSucceeds(getDoc(ref(db('member'), 'registrations/a_member')));
+  await assertSucceeds(getDoc(ref(db('admin'), 'registrations/a_member')));
+  await assertFails(getDoc(ref(db('other'), 'registrations/a_member')));
+  await assertFails(setDoc(ref(db('other'), 'registrations/a_other'), { activityId: 'a', groupId: 'g',
+    userId: 'other', status: 'submitted', answers: {} }));
+  await assertFails(updateDoc(ref(db('member'), 'registrations/a_member'), { status: 'cancelled' }));
+});
+
+test('편성안과 공개 이력은 운영진만 읽는다', async () => {
+  for (const path of ['drafts/d', 'publications/a_v1']) {
+    await assertSucceeds(getDoc(ref(db('admin'), path)));
+    await assertFails(getDoc(ref(db('member'), path)));
+    await assertFails(setDoc(ref(db('admin'), path), { activityId: 'a', groupId: 'g' }));
   }
-  await assertSucceeds(setDoc(ref(s, 'groups/g/joinRequests/applicant'),
-    request('applicant', { requestedAt: serverTimestamp(), groupName: '가'.repeat(100) })));
-});
-test('강퇴된 사용자는 approved 요청에서 유효 초대로 재요청한다', async () => {
-  await seed('groups/g/joinRequests/member', request('member', {
-    status: 'approved', reviewedAt: old, reviewedBy: 'owner',
-  }));
-  await assertSucceeds(deleteDoc(ref(db('admin'), 'groups/g/memberships/member')));
-  const s = db('member');
-  await assertSucceeds(setDoc(ref(s, 'groups/g/joinRequests/member'),
-    request('member', { requestedAt: serverTimestamp() })));
-  const snapshot = await getDoc(ref(s, 'groups/g/joinRequests/member'));
-  assert.equal(snapshot.data().status, 'pending');
-  assert.equal(snapshot.data().reviewedAt, null);
-  assert.equal(snapshot.data().reviewedBy, null);
-});
-test('현재 회원 또는 만료된 초대로는 approved 요청을 재요청하지 못한다', async () => {
-  await seed('groups/g/joinRequests/member', request('member', { status: 'approved' }));
-  await assertFails(setDoc(ref(db('member'), 'groups/g/joinRequests/member'),
-    request('member', { requestedAt: serverTimestamp() })));
-  await assertSucceeds(deleteDoc(ref(db('member'), 'groups/g/memberships/member')));
-  await seed('groups/g/invites/i', { code: 'TEAM24', enabled: true, expiresAt: old, createdAt: old });
-  await assertFails(setDoc(ref(db('member'), 'groups/g/joinRequests/member'),
-    request('member', { requestedAt: serverTimestamp() })));
 });
 
-test('각 질문 선택지가 10개인 소모임도 정상 공개할 수 있다', async () => {
-  await seed('activities/a', activity({ status: 'closed', questions: manyQuestions }));
-  const s = db('owner');
-  const batch = writeBatch(s);
-  batch.set(ref(s, 'activities/a/publications/many-options'), {
-    version: 1, sourceDraftId: 'd', publishedBy: 'owner', publishedAt: serverTimestamp(),
-    teams: [{ teamId: 'team_1', participants: ['member'] }], displayProfiles: { member: '가온' },
-  });
-  batch.update(ref(s, 'activities/a'), {
-    currentPublicationId: 'many-options', publicationVersion: 1, updatedAt: serverTimestamp(),
-  });
-  await assertSucceeds(batch.commit());
-  const snapshot = await assertSucceeds(getDoc(ref(s, 'activities/a/publications/many-options')));
-  assert.equal(snapshot.data().version, 1);
+test('내 팀 뷰는 제출한 참가자 본인만 읽는다', async () => {
+  await assertSucceeds(getDoc(ref(db('member'), 'teamViews/a_member')));
+  await assertFails(getDoc(ref(db('admin'), 'teamViews/a_member')));
+  // `other` cancelled the registration, so the old view stays hidden.
+  await assertFails(getDoc(ref(db('other'), 'teamViews/a_other')));
+  await assertFails(updateDoc(ref(db('member'), 'teamViews/a_member'), { teamId: 't2' }));
+});
+
+test('후기 원문은 작성자만 읽는다', async () => {
+  await assertSucceeds(getDoc(ref(db('member'), 'feedback/a_member')));
+  await assertFails(getDoc(ref(db('admin'), 'feedback/a_member')));
+  await assertFails(setDoc(ref(db('other'), 'feedback/a_other'), { activityId: 'a', groupId: 'g',
+    userId: 'other', rating: 5 }));
+});
+
+test('배치 선호는 작성자만 읽고 운영진도 볼 수 없다', async () => {
+  await assertSucceeds(getDoc(ref(db('member'), 'placementPreferences/g_member_other')));
+  await assertFails(getDoc(ref(db('admin'), 'placementPreferences/g_member_other')));
+  await assertFails(getDoc(ref(db('other'), 'placementPreferences/g_member_other')));
+  await assertFails(setDoc(ref(db('member'), 'placementPreferences/g_member_admin'), { groupId: 'g',
+    userId: 'member', targetUserId: 'admin', active: true }));
+});
+
+test('알림은 본인이 읽고 readAt만 서버 시각으로 바꿀 수 있다', async () => {
+  await assertSucceeds(getDoc(ref(db('member'), 'notifications/n')));
+  await assertFails(getDoc(ref(db('other'), 'notifications/n')));
+  await assertSucceeds(updateDoc(ref(db('member'), 'notifications/n'), { readAt: serverTimestamp() }));
+  await assertFails(updateDoc(ref(db('member'), 'notifications/n'), { readAt: old }));
+  await assertFails(updateDoc(ref(db('member'), 'notifications/n'), { type: 'teamPublished' }));
+  await assertFails(updateDoc(ref(db('other'), 'notifications/n'), { readAt: serverTimestamp() }));
+  await assertFails(setDoc(ref(db('member'), 'notifications/new'), { userId: 'member' }));
+  await assertFails(deleteDoc(ref(db('member'), 'notifications/n')));
+});
+
+test('앱 설정은 로그인 사용자만 읽고, 스키마 설명과 그 밖의 경로는 막는다', async () => {
+  await assertSucceeds(getDoc(ref(db('outsider'), 'appConfig/teamix')));
+  await assertFails(getDoc(ref(anon(), 'appConfig/teamix')));
+  await assertFails(setDoc(ref(db('admin'), 'appConfig/teamix'), { palette: [] }));
+  await assertFails(getDoc(ref(db('admin'), '_schema/users')));
+  // Old subcollection layout must stay closed.
+  await assertFails(getDoc(ref(db('member'), 'groups/g/memberships/member')));
+  await assertFails(setDoc(ref(db('member'), 'unknown/x'), { a: 1 }));
 });
