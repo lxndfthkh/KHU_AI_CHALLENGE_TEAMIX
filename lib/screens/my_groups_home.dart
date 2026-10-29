@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'group_home.dart';
+import 'group_card_palette.dart';
 
 const _ink = Color(0xFF20283F);
 class MyGroupsHome extends StatefulWidget {
@@ -30,24 +31,26 @@ class _MyGroupsHomeState extends State<MyGroupsHome> {
       _circle(Icons.add, '모임 추가', const Color(0xFFFFF0ED), const Color(0xFFEC7569), _add), const SizedBox(width: 12), _circle(Icons.person_outline, '계정 정보', const Color(0xFFEAF4ED), const Color(0xFF739680), _account)]),
     const SizedBox(height: 12), const Text('내 모임', style: TextStyle(fontSize: 27, height: 1.23, fontWeight: FontWeight.w800, letterSpacing: -1, color: _ink)), const SizedBox(height: 12),
     if (_empty) const _EmptyGroups() else ...[
-      _GroupCard(name: '경희 메이커스', color: const Color(0xFFEFF7F1), accent: const Color(0xFF739680), activities: const ['작은 아이디어, 함께 만들기', '메이커스 미니 프로젝트'], onTap: () => Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) => const GroupHome()))),
+      _GroupCard(name: '경희 메이커스', joinedIndex: 0, activities: const ['작은 아이디어, 함께 만들기', '메이커스 미니 프로젝트'], onTap: () => Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) => const GroupHome()))),
       const SizedBox(height: 8),
-      _GroupCard(name: '주말 산책 모임', color: const Color(0xFFFFF4E8), accent: const Color(0xFFAD886A), activities: const ['느긋하게 걷는 주말', '노을 따라 저녁 산책'], onTap: () => _notice('모임 상세는 아직 연결되지 않은 시연 화면이에요.')),
+      _GroupCard(name: '주말 산책 모임', joinedIndex: 1, activities: const ['느긋하게 걷는 주말', '노을 따라 저녁 산책'], onTap: () => _notice('모임 상세는 아직 연결되지 않은 시연 화면이에요.')),
       const SizedBox(height: 8),
-      const _GroupCard(name: '참여 요청한 모임', color: Color(0xFFF4F1FA), accent: Color(0xFF897B9A), activities: ['함께 시작하는 첫 프로젝트', '아이디어 나누는 저녁'], pending: true),
+      const _GroupCard(name: '참여 요청한 모임', activities: ['함께 시작하는 첫 프로젝트', '아이디어 나누는 저녁'], pending: true),
     ],
   ])))));
 }
 class _GroupCard extends StatelessWidget {
-  const _GroupCard({required this.name, required this.color, required this.accent, required this.activities, this.pending = false, this.onTap});
+  const _GroupCard({required this.name, required this.activities, this.joinedIndex = 0, this.pending = false, this.onTap});
   final String name;
-  final Color color, accent;
+  final int joinedIndex;
   final List<String> activities;
   final bool pending;
   final VoidCallback? onTap;
+  GroupCardPalette get palette => GroupCardPalette.forGroup(joinedIndex, isPending: pending);
+  Color get accent => palette.accent;
   Widget _badge(String text) => Container(padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3), decoration: BoxDecoration(color: Colors.white.withAlpha(200), borderRadius: BorderRadius.circular(12)), child: Text(text, style: TextStyle(fontSize: 10, color: accent)));
   @override
-  Widget build(BuildContext context) => Material(color: color, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(22), side: const BorderSide(color: Color(0xFFEFF0F3))), clipBehavior: Clip.antiAlias, child: InkWell(onTap: onTap, child: Padding(padding: const EdgeInsets.fromLTRB(17, 11, 17, 10), child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+  Widget build(BuildContext context) => Material(color: palette.background, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(22), side: const BorderSide(color: Color(0xFFEFF0F3))), clipBehavior: Clip.antiAlias, child: InkWell(onTap: onTap, child: Padding(padding: const EdgeInsets.fromLTRB(17, 11, 17, 10), child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
     Row(children: [Container(width: 31, height: 31, decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(10)), child: Icon(pending ? Icons.schedule : Icons.filter_vintage_outlined, color: accent, size: 21)), const SizedBox(width: 12), Expanded(child: Text(name, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w800, color: _ink))), const SizedBox(width: 7), _badge(pending ? '승인 대기' : '부원')]),
     const SizedBox(height: 8),
     Container(width: double.infinity, padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7), decoration: BoxDecoration(color: Colors.white.withAlpha(170), borderRadius: BorderRadius.circular(13)), child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
