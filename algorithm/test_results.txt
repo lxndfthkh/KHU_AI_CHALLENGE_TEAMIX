@@ -1,0 +1,19 @@
+test_01_basic_twenty (test_engine.EngineTests.test_01_basic_twenty) ... ok
+test_06_insufficient_role (test_engine.EngineTests.test_06_insufficient_role) ... ok
+test_11_capacity (test_engine.EngineTests.test_11_capacity) ... ok
+test_13_reproducible_without_cache (test_engine.EngineTests.test_13_reproducible_without_cache) ... ok
+test_20_uncapped_team_can_exceed_five (test_engine.EngineTests.test_20_uncapped_team_can_exceed_five) ... ok
+test_diagnostic_fixed_role_conflict (test_engine.EngineTests.test_diagnostic_fixed_role_conflict) ... ok
+test_missing_response_not_imputed (test_engine.EngineTests.test_missing_response_not_imputed) ... ok
+test_private_dedup_and_limit (test_engine.EngineTests.test_private_dedup_and_limit) ... ok
+test_public_reformation_rejected (test_engine.EngineTests.test_public_reformation_rejected) ... ok
+test_real_100001st_row_stops (test_engine.EngineTests.test_real_100001st_row_stops) ... ok
+test_similar_and_common_time (test_engine.EngineTests.test_similar_and_common_time) ... ok
+test_single_team_and_all_singletons (test_engine.EngineTests.test_single_team_and_all_singletons) ... ok
+test_table_limit (test_engine.EngineTests.test_table_limit) ... ok
+test_verifier_rejects_invalid_assignment (test_engine.EngineTests.test_verifier_rejects_invalid_assignment) ... ok
+
+----------------------------------------------------------------------
+Ran 14 tests in 10.260s
+
+OK
