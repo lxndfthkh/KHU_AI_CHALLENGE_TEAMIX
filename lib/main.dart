@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:firebase_core/firebase_core.dart';
+
 import 'firebase_options.dart';
 import 'onboarding.dart';
 import 'screens/my_groups_home.dart';
@@ -17,10 +18,14 @@ class MyApp extends StatelessWidget {
   final bool showEmpty;
   @override
   Widget build(BuildContext context) => MaterialApp(
-    title: 'TEAMIX', debugShowCheckedModeBanner: false,
-    theme: ThemeData(useMaterial3: true, scaffoldBackgroundColor: Colors.white,
+    title: 'TEAMIX',
+    debugShowCheckedModeBanner: false,
+    theme: ThemeData(
+      useMaterial3: true,
+      scaffoldBackgroundColor: Colors.white,
       colorScheme: ColorScheme.fromSeed(seedColor: const Color(0xFF739680)),
-      fontFamilyFallback: const ['Pretendard', 'Noto Sans KR', 'sans-serif']),
+      fontFamilyFallback: const ['Pretendard', 'Noto Sans KR', 'sans-serif'],
+    ),
     home: MyGroupsHome(initiallyEmpty: showEmpty),
   );
 }
