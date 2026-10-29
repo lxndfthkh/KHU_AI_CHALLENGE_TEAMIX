@@ -1,8 +1,14 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:teamix/main.dart';
+import 'package:teamix/onboarding.dart';
 
 void main() {
+  testWidgets('앱이 시작 화면을 그린다', (tester) async {
+    await tester.pumpWidget(const TeamixApp());
+    expect(find.text('teamix.'), findsWidgets);
+  });
+
   testWidgets('Launches directly into groups home', (tester) async {
     await tester.pumpWidget(const MyApp());
     expect(find.text('내 모임'), findsOneWidget);
