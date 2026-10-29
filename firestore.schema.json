@@ -1,0 +1,182 @@
+{
+  "users": {
+    "path": "users/{authUid}",
+    "fields": {
+      "displayName": "string, 1..40",
+      "createdAt": "timestamp",
+      "updatedAt": "timestamp"
+    },
+    "notes": "Self-only profile. Credentials and email remain in Firebase Auth. No role on user profile."
+  },
+  "groups": {
+    "path": "groups/{groupId}",
+    "fields": {
+      "name": "string",
+      "description": "string",
+      "ownerId": "uid",
+      "themeColor": "mint | peach | lilac",
+      "status": "active | archived",
+      "createdAt": "timestamp",
+      "updatedAt": "timestamp"
+    },
+    "notes": "Creation atomically creates approved admin membership. Colors consistent on list and detail."
+  },
+  "memberships": {
+    "path": "memberships/{groupId}_{uid}",
+    "fields": {
+      "groupId": "id",
+      "userId": "uid",
+      "displayName": "safe name snapshot",
+      "role": "admin | member",
+      "status": "pending | approved | rejected | left",
+      "invitationId": "optional id",
+      "createdAt": "timestamp",
+      "updatedAt": "timestamp"
+    },
+    "notes": "Authoritative per-group role. Server creates/approves; no self escalation. No private email or survey answers."
+  },
+  "invitations": {
+    "path": "invitations/{tokenHash}",
+    "fields": {
+      "groupId": "id",
+      "expiresAt": "timestamp",
+      "active": "boolean",
+      "createdBy": "uid",
+      "createdAt": "timestamp"
+    },
+    "notes": "Server validates token and returns only name, description, member count for preview. Rate limit lookup. Never expose token hash list."
+  },
+  "activities": {
+    "path": "activities/{activityId}",
+    "fields": {
+      "groupId": "id",
+      "title": "string",
+      "description": "string",
+      "createdBy": "uid",
+      "themeColor": "mint | peach | lilac",
+      "capacity": "positive integer",
+      "targetTeamSize": "positive integer set at creation",
+      "deadlineAt": "timestamp",
+      "status": "recruiting | closed | active | ended | cancelled",
+      "participantCount": "server-maintained integer",
+      "questionsLockedAt": "timestamp or null",
+      "publishedVersion": "integer or null",
+      "createdAt": "timestamp",
+      "updatedAt": "timestamp"
+    },
+    "notes": "No teamCount input required at creation. No matching method or private constraints on this member-readable document."
+  },
+  "activitySettings": {
+    "path": "activities/{activityId}/settings/matching",
+    "fields": {
+      "method": "balanced | similar",
+      "enabledQuestionIds": "list",
+      "weights": "map, algorithm contract TBD",
+      "updatedAt": "timestamp"
+    },
+    "notes": "Admin-only read. Placement preferences are NOT copied here."
+  },
+  "activityQuestions": {
+    "path": "activities/{activityId}/questions/{questionId}",
+    "fields": {
+      "label": "string",
+      "type": "single | multiple | scale",
+      "options": "list of id/label",
+      "required": "boolean",
+      "order": "integer",
+      "enabled": "boolean"
+    },
+    "notes": "Displayed only after apply action. Locked after first accepted response; cancellation does not unlock questions."
+  },
+  "registrations": {
+    "path": "registrations/{activityId}_{uid}",
+    "fields": {
+      "activityId": "id",
+      "groupId": "id",
+      "userId": "uid",
+      "status": "submitted | cancelled",
+      "answers": "map keyed by question ID",
+      "submittedAt": "timestamp",
+      "updatedAt": "timestamp"
+    },
+    "notes": "Submit/edit/cancel through server transaction checking membership, deadline, status and capacity; retries must not increment count twice. Draft form is not a registration."
+  },
+  "drafts": {
+    "path": "drafts/{draftId}",
+    "fields": {
+      "activityId": "id",
+      "groupId": "id",
+      "version": "integer",
+      "teams": "list of team id and member UID list",
+      "validation": "non-sensitive validation map",
+      "status": "generating | ready | failed",
+      "createdAt": "timestamp",
+      "updatedAt": "timestamp"
+    },
+    "notes": "Admin only. No preference targets, counts, raw reasons, or revealing errors. Draft changes never mutate publications."
+  },
+  "publications": {
+    "path": "publications/{activityId}_v{version}",
+    "fields": {
+      "activityId": "id",
+      "groupId": "id",
+      "version": "integer",
+      "teams": "safe team snapshots",
+      "publishedBy": "uid",
+      "publishedAt": "timestamp"
+    },
+    "notes": "Immutable server snapshot. Admin read only. Members receive their own teamViews instead of the entire roster."
+  },
+  "teamViews": {
+    "path": "teamViews/{activityId}_{uid}",
+    "fields": {
+      "activityId": "id",
+      "groupId": "id",
+      "userId": "uid",
+      "version": "integer",
+      "teamId": "id",
+      "members": "list of uid, displayName, role",
+      "commonTimes": "list",
+      "compositionChanged": "boolean",
+      "publishedAt": "timestamp"
+    },
+    "notes": "Only corresponding participant reads. No matching method, answers or private preference explanations. Update all views and publishedVersion atomically for bounded MVP; version-gate larger publishes."
+  },
+  "feedback": {
+    "path": "feedback/{activityId}_{uid}",
+    "fields": {
+      "activityId": "id",
+      "groupId": "id",
+      "userId": "uid",
+      "teamId": "id",
+      "rating": "integer 1..5",
+      "comment": "optional string",
+      "createdAt": "timestamp"
+    },
+    "notes": "Only author reads raw record. Server checks ended activity and participant. Admin reads aggregate from activities/{id}/feedbackSummary/current."
+  },
+  "placementPreferences": {
+    "path": "placementPreferences/{groupId}_{uid}_{targetUid}",
+    "fields": {
+      "groupId": "id",
+      "userId": "uid",
+      "targetUserId": "uid",
+      "active": "boolean",
+      "createdAt": "timestamp",
+      "updatedAt": "timestamp"
+    },
+    "notes": "Owner read only; server validates create/revoke. No admin access, even existence/count. Reject self targets; verify shared activity membership."
+  },
+  "notifications": {
+    "path": "notifications/{notificationId}",
+    "fields": {
+      "userId": "uid",
+      "type": "joinApproved | joinRejected | teamPublished | teamChanged",
+      "groupId": "id",
+      "activityId": "optional id",
+      "createdAt": "timestamp",
+      "readAt": "timestamp or null"
+    },
+    "notes": "Owner read/mark read only. Server writes, idempotent operation IDs."
+  }
+}
