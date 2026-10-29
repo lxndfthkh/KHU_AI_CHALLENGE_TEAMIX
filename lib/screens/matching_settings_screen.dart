@@ -60,7 +60,7 @@ class _MatchingSettingsScreenState extends State<MatchingSettingsScreen> {
   void dispose() {
     _capacity.dispose();
     if (widget.service == null && _service is HttpTeamMatchingService) {
-      (_service as HttpTeamMatchingService).close();
+      _service.close();
     }
     super.dispose();
   }
@@ -121,17 +121,21 @@ class _MatchingSettingsScreenState extends State<MatchingSettingsScreen> {
     ));
   }
 
-  Widget _section(String title, Widget child) => Container(
-    margin: const EdgeInsets.only(bottom: 16),
-    padding: const EdgeInsets.all(16),
-    decoration: BoxDecoration(
-      color: mint, borderRadius: BorderRadius.circular(21),
+  Widget _section(String title, Widget child) => Padding(
+    padding: const EdgeInsets.only(bottom: 16),
+    child: Material(
+      color: mint,
+      borderRadius: BorderRadius.circular(21),
+      clipBehavior: Clip.antiAlias,
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Text(title, style: const TextStyle(
+            color: ink, fontSize: 16, fontWeight: FontWeight.w700)),
+          const SizedBox(height: 12), child,
+        ]),
+      ),
     ),
-    child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-      Text(title, style: const TextStyle(
-        color: ink, fontSize: 16, fontWeight: FontWeight.w700)),
-      const SizedBox(height: 12), child,
-    ]),
   );
 
   @override
@@ -228,8 +232,7 @@ class _MatchingSettingsScreenState extends State<MatchingSettingsScreen> {
                   shrinkWrap: true, physics: const NeverScrollableScrollPhysics(),
                   buildDefaultDragHandles: false,
                   itemCount: _priority.length,
-                  onReorder: (oldIndex, newIndex) => setState(() {
-                    if (newIndex > oldIndex) newIndex--;
+                  onReorderItem: (oldIndex, newIndex) => setState(() {
                     final question = _priority.removeAt(oldIndex);
                     _priority.insert(newIndex, question);
                   }),
