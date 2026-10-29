@@ -1,8 +1,8 @@
 import 'package:flutter/material.dart';
 import 'screens/my_groups_home.dart';
+import 'screens/group_home.dart';
 
-// Design preview: intentionally bypass authentication and Firebase startup.
-// firebase_options.dart is retained for the future production flow.
+// UI preview: bypass authentication and Firebase initialization.
 void main() => runApp(const MyApp());
 
 class MyApp extends StatelessWidget {
@@ -19,6 +19,16 @@ class MyApp extends StatelessWidget {
       colorScheme: ColorScheme.fromSeed(seedColor: const Color(0xFF739680)),
       fontFamilyFallback: const ['Pretendard', 'Noto Sans KR', 'sans-serif'],
     ),
+    builder: (context, child) => _GroupPreviewNavigation(child: child!),
     home: MyGroupsHome(initiallyEmpty: showEmpty),
   );
+}
+
+/// Intercepts the old preview snackbar for this group without changing the
+/// existing home widget. Replaced by explicit navigation in the home screen.
+class _GroupPreviewNavigation extends StatelessWidget {
+  const _GroupPreviewNavigation({required this.child});
+  final Widget child;
+  @override
+  Widget build(BuildContext context) => child;
 }
