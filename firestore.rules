@@ -73,9 +73,12 @@ service cloud.firestore {
       let changed = request.resource.data.diff(resource.data).affectedKeys();
       let before = activeBefore(a);
       let after = activeAfter(a);
-      return member(resource.data.groupId) && resource.data.currentPublicationId == null
+      return changed.hasOnly(['applicationCount', 'responseVersion'])
+        && member(resource.data.groupId) && resource.data.currentPublicationId == null
         && resource.data.publicationVersion == 0
-        && changed.hasOnly(['applicationCount', 'responseVersion'])
+        && request.resource.data.applicationCount is int
+        && request.resource.data.applicationCount >= 0
+        && request.resource.data.applicationCount <= resource.data.recruitmentCapacity
         && request.resource.data.responseVersion == resource.data.responseVersion + 1
         && getAfter(/databases/$(database)/documents/activities/$(a)/applications/$(request.auth.uid)).data.updatedAt == request.time
         && ((!before && after && request.resource.data.applicationCount == resource.data.applicationCount + 1)
@@ -89,9 +92,9 @@ service cloud.firestore {
         && activityAfter(a).responseVersion == activity(a).responseVersion + 1;
     }
     function requestSchema(d, uid, g) {
-      return d.keys().hasAll(['uid', 'groupId', 'nickname', 'status', 'requestedAt', 'reviewedAt', 'reviewedBy', 'inviteId'])
-        && d.keys().hasOnly(['uid', 'groupId', 'nickname', 'status', 'requestedAt', 'reviewedAt', 'reviewedBy', 'inviteId'])
-        && d.uid == uid && d.groupId == g && text(d.nickname, 40) && d.inviteId is string;
+      return d.keys().hasAll(['uid', 'groupId', 'groupName', 'nickname', 'status', 'requestedAt', 'reviewedAt', 'reviewedBy', 'inviteId'])
+        && d.keys().hasOnly(['uid', 'groupId', 'groupName', 'nickname', 'status', 'requestedAt', 'reviewedAt', 'reviewedBy', 'inviteId'])
+        && d.uid == uid && d.groupId == g && text(d.groupName, 100) && text(d.nickname, 40) && d.inviteId is string;
     }
     function validInvite(g, i) {
       let invite = get(/databases/$(database)/documents/groups/$(g)/invites/$(i)).data;
@@ -147,7 +150,7 @@ service cloud.firestore {
           && request.resource.data.reviewedAt == null && request.resource.data.reviewedBy == null
           && validInvite(g, request.resource.data.inviteId);
         allow update: if requestSchema(request.resource.data, uid, g) && (
-          (self(uid) && !member(g) && resource.data.status == 'rejected'
+          (self(uid) && !member(g) && resource.data.status in ['rejected', 'approved']
             && request.resource.data.status == 'pending' && request.resource.data.requestedAt == request.time
             && request.resource.data.reviewedAt == null && request.resource.data.reviewedBy == null
             && validInvite(g, request.resource.data.inviteId))
@@ -190,10 +193,20 @@ service cloud.firestore {
         && request.resource.data.responseVersion == 0 && request.resource.data.settingsVersion == 1
         && request.resource.data.publicationVersion == 0 && request.resource.data.currentPublicationId == null
         && request.resource.data.status == 'recruiting' && request.resource.data.deadline > request.time;
-      allow update: if validActivity(request.resource.data) && (counterUpdate(a)
-        || (operator(resource.data.groupId)
-          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['title', 'description', 'goal',
+      function publicationUpdate() {
+        return request.resource.data.diff(resource.data).affectedKeys()
+            .hasOnly(['currentPublicationId', 'publicationVersion', 'updatedAt'])
+          && operator(resource.data.groupId) && resource.data.status in ['closed', 'active']
+          && request.resource.data.updatedAt == request.time
+          && request.resource.data.publicationVersion == resource.data.publicationVersion + 1
+          && request.resource.data.currentPublicationId is string
+          && !exists(/databases/$(database)/documents/activities/$(a)/publications/$(request.resource.data.currentPublicationId))
+          && getAfter(/databases/$(database)/documents/activities/$(a)/publications/$(request.resource.data.currentPublicationId)).data.version == request.resource.data.publicationVersion;
+      }
+      function contentUpdate() {
+        return request.resource.data.diff(resource.data).affectedKeys().hasOnly(['title', 'description', 'goal',
             'recruitmentCapacity', 'deadline', 'status', 'questions', 'matchingSettings', 'settingsVersion', 'updatedAt'])
+          && operator(resource.data.groupId) && validActivity(request.resource.data)
           && request.resource.data.updatedAt == request.time
           && (resource.data.applicationCount == 0 || request.resource.data.questions == resource.data.questions)
           && ((request.resource.data.questions == resource.data.questions
@@ -204,14 +217,9 @@ service cloud.firestore {
           && (request.resource.data.status == resource.data.status
             || (resource.data.status == 'recruiting' && request.resource.data.status == 'closed')
             || (resource.data.status == 'closed' && request.resource.data.status == 'active' && resource.data.currentPublicationId != null)
-            || (resource.data.status == 'active' && request.resource.data.status == 'ended')))
-        || (operator(resource.data.groupId) && resource.data.status in ['closed', 'active']
-          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['currentPublicationId', 'publicationVersion', 'updatedAt'])
-          && request.resource.data.updatedAt == request.time
-          && request.resource.data.publicationVersion == resource.data.publicationVersion + 1
-          && request.resource.data.currentPublicationId is string
-          && !exists(/databases/$(database)/documents/activities/$(a)/publications/$(request.resource.data.currentPublicationId))
-          && getAfter(/databases/$(database)/documents/activities/$(a)/publications/$(request.resource.data.currentPublicationId)).data.version == request.resource.data.publicationVersion));
+            || (resource.data.status == 'active' && request.resource.data.status == 'ended'));
+      }
+      allow update: if counterUpdate(a) || publicationUpdate() || contentUpdate();
       match /applications/{uid} {
         function valid(d) {
           return d.keys().hasAll(['uid', 'groupId', 'status', 'answers', 'nicknameSnapshot', 'submittedAt', 'updatedAt'])

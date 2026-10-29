@@ -23,7 +23,7 @@ const activity = (extra = {}) => ({ groupId: 'g', title: '활동', description: 
 const application = (uid, extra = {}) => ({ uid, groupId: 'g', status: 'submitted',
   answers: { role: '개발', time: ['수 저녁'], experience: 3, interest: ['앱'] },
   nicknameSnapshot: uid, submittedAt: serverTimestamp(), updatedAt: serverTimestamp(), ...extra });
-const request = (uid, extra = {}) => ({ uid, groupId: 'g', nickname: uid, status: 'pending',
+const request = (uid, extra = {}) => ({ uid, groupId: 'g', groupName: group.name, nickname: uid, status: 'pending',
   requestedAt: old, reviewedAt: null, reviewedBy: null, inviteId: 'i', ...extra });
 const preference = (targets = [{ targetUid: 'other', confirmed: true }]) => ({
   authorUid: 'member', groupId: 'g', targets, updatedAt: serverTimestamp() });
@@ -190,4 +190,86 @@ test('collectionGroup 조회는 본인 uid 조건이 필요하다', async () => 
   await assertFails(getDocs(collectionGroup(s, 'memberships')));
   await assertSucceeds(getDocs(query(collectionGroup(db('applicant'), 'joinRequests'),
     where('uid', '==', 'applicant'), where('status', '==', 'pending'), orderBy('requestedAt', 'desc'))));
+});
+
+const manyQuestions = {
+  ...questions,
+  roleOptions: ['개발', ...Array.from({ length: 9 }, (_, i) => `역할${i}`)],
+  timeOptions: ['수 저녁', ...Array.from({ length: 9 }, (_, i) => `시간${i}`)],
+  interestOptions: ['앱', ...Array.from({ length: 9 }, (_, i) => `관심${i}`)],
+};
+
+test('각 질문 선택지가 10개인 소모임에서 정상 신청이 성공한다', async () => {
+  await seed('activities/a', activity({ questions: manyQuestions }));
+  await assertSucceeds(submit(db('member')));
+  const snapshot = await getDoc(ref(db('member'), 'activities/a'));
+  assert.equal(snapshot.data().applicationCount, 1);
+  assert.equal(snapshot.data().responseVersion, 1);
+});
+test('운영자는 선택지가 많은 소모임 제목을 수정할 수 있다', async () => {
+  await seed('activities/a', activity({ questions: manyQuestions }));
+  await assertSucceeds(updateDoc(ref(db('owner'), 'activities/a'), {
+    title: '수정된 제목', updatedAt: serverTimestamp(),
+  }));
+});
+test('가입 대기 화면은 재요청 문서의 groupName을 읽는다', async () => {
+  await seed('groups/g/joinRequests/applicant', request('applicant', {
+    status: 'rejected', reviewedAt: old, reviewedBy: 'owner',
+  }));
+  const s = db('applicant');
+  await assertSucceeds(setDoc(ref(s, 'groups/g/joinRequests/applicant'),
+    request('applicant', { requestedAt: serverTimestamp() })));
+  const snapshot = await assertSucceeds(getDoc(ref(s, 'groups/g/joinRequests/applicant')));
+  assert.equal(snapshot.data().groupName, group.name);
+  assert.equal(snapshot.data().status, 'pending');
+  await assertFails(getDoc(ref(s, 'groups/g')));
+});
+test('가입 요청의 groupName은 필수이며 1~100자 문자열이다', async () => {
+  const s = db('applicant');
+  await seed('groups/g/joinRequests/applicant', request('applicant', { status: 'rejected' }));
+  for (const value of [undefined, '', '가'.repeat(101), 123]) {
+    const data = request('applicant', { requestedAt: serverTimestamp(), groupName: value });
+    if (value === undefined) delete data.groupName;
+    await assertFails(setDoc(ref(s, 'groups/g/joinRequests/applicant'), data));
+  }
+  await assertSucceeds(setDoc(ref(s, 'groups/g/joinRequests/applicant'),
+    request('applicant', { requestedAt: serverTimestamp(), groupName: '가'.repeat(100) })));
+});
+test('강퇴된 사용자는 approved 요청에서 유효 초대로 재요청한다', async () => {
+  await seed('groups/g/joinRequests/member', request('member', {
+    status: 'approved', reviewedAt: old, reviewedBy: 'owner',
+  }));
+  await assertSucceeds(deleteDoc(ref(db('admin'), 'groups/g/memberships/member')));
+  const s = db('member');
+  await assertSucceeds(setDoc(ref(s, 'groups/g/joinRequests/member'),
+    request('member', { requestedAt: serverTimestamp() })));
+  const snapshot = await getDoc(ref(s, 'groups/g/joinRequests/member'));
+  assert.equal(snapshot.data().status, 'pending');
+  assert.equal(snapshot.data().reviewedAt, null);
+  assert.equal(snapshot.data().reviewedBy, null);
+});
+test('현재 회원 또는 만료된 초대로는 approved 요청을 재요청하지 못한다', async () => {
+  await seed('groups/g/joinRequests/member', request('member', { status: 'approved' }));
+  await assertFails(setDoc(ref(db('member'), 'groups/g/joinRequests/member'),
+    request('member', { requestedAt: serverTimestamp() })));
+  await assertSucceeds(deleteDoc(ref(db('member'), 'groups/g/memberships/member')));
+  await seed('groups/g/invites/i', { code: 'TEAM24', enabled: true, expiresAt: old, createdAt: old });
+  await assertFails(setDoc(ref(db('member'), 'groups/g/joinRequests/member'),
+    request('member', { requestedAt: serverTimestamp() })));
+});
+
+test('각 질문 선택지가 10개인 소모임도 정상 공개할 수 있다', async () => {
+  await seed('activities/a', activity({ status: 'closed', questions: manyQuestions }));
+  const s = db('owner');
+  const batch = writeBatch(s);
+  batch.set(ref(s, 'activities/a/publications/many-options'), {
+    version: 1, sourceDraftId: 'd', publishedBy: 'owner', publishedAt: serverTimestamp(),
+    teams: [{ teamId: 'team_1', participants: ['member'] }], displayProfiles: { member: '가온' },
+  });
+  batch.update(ref(s, 'activities/a'), {
+    currentPublicationId: 'many-options', publicationVersion: 1, updatedAt: serverTimestamp(),
+  });
+  await assertSucceeds(batch.commit());
+  const snapshot = await assertSucceeds(getDoc(ref(s, 'activities/a/publications/many-options')));
+  assert.equal(snapshot.data().version, 1);
 });

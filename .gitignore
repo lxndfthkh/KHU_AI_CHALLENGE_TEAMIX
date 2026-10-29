@@ -57,3 +57,4 @@ app.*.map.json
 *.jks
 *.keystore
 key.properties
+node_modules/
