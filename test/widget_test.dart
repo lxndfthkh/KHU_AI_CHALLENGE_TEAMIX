@@ -1,30 +1,30 @@
-// This is a basic Flutter widget test.
-//
-// To perform an interaction with a widget in your test, use the WidgetTester
-// utility in the flutter_test package. For example, you can send tap and scroll
-// gestures. You can also use WidgetTester to find child widgets in the widget
-// tree, read text, and verify that the values of widget properties are correct.
-
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-
 import 'package:teamix/main.dart';
 
 void main() {
-  testWidgets('Counter increments smoke test', (WidgetTester tester) async {
-    // Build our app and trigger a frame.
+  testWidgets('Launches directly into groups home', (tester) async {
     await tester.pumpWidget(const MyApp());
+    expect(find.text('내 모임'), findsOneWidget);
+    expect(find.text('경희 메이커스'), findsOneWidget);
+    expect(find.text('주말 산책 모임'), findsOneWidget);
+    await tester.scrollUntilVisible(find.text('참여 요청한 모임'), 150);
+    expect(find.text('참여 요청한 모임'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
 
-    // Verify that our counter starts at 0.
-    expect(find.text('0'), findsOneWidget);
-    expect(find.text('1'), findsNothing);
-
-    // Tap the '+' icon and trigger a frame.
+  testWidgets('Plus opens create and join menu', (tester) async {
+    await tester.pumpWidget(const MyApp());
     await tester.tap(find.byIcon(Icons.add));
-    await tester.pump();
+    await tester.pumpAndSettle();
+    expect(find.text('모임 만들기'), findsOneWidget);
+    expect(find.text('모임 참가하기'), findsOneWidget);
+  });
 
-    // Verify that our counter has incremented.
-    expect(find.text('0'), findsNothing);
-    expect(find.text('1'), findsOneWidget);
+  testWidgets('Empty home is available without authentication', (tester) async {
+    await tester.pumpWidget(const MyApp(showEmpty: true));
+    expect(find.text('아직 함께하는 모임이 없어요'), findsOneWidget);
+    expect(find.text('경희 메이커스'), findsNothing);
+    expect(tester.takeException(), isNull);
   });
 }
