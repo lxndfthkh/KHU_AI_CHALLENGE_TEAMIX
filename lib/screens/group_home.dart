@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 
-const _ink = Color(0xFF20283F);
+import '../theme.dart';
 
 /// UI preview only: operator access here is not an authorization decision.
 class GroupHome extends StatelessWidget {
@@ -15,7 +15,7 @@ class GroupHome extends StatelessWidget {
   void _more(BuildContext context) {
     showModalBottomSheet<void>(
       context: context,
-      backgroundColor: Colors.white,
+      backgroundColor: teamixBackground,
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
       ),
@@ -49,7 +49,7 @@ class GroupHome extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => Scaffold(
-    backgroundColor: Colors.white,
+    backgroundColor: teamixBackground,
     body: SafeArea(
       child: Align(
         alignment: Alignment.topCenter,
@@ -63,7 +63,11 @@ class GroupHome extends StatelessWidget {
                   IconButton(
                     onPressed: () => Navigator.pop(context),
                     tooltip: '내 모임으로 돌아가기',
-                    icon: const Icon(Icons.chevron_left, size: 28, color: _ink),
+                    icon: const Icon(
+                      Icons.chevron_left,
+                      size: 28,
+                      color: ink,
+                    ),
                   ),
                   const Expanded(
                     child: Center(
@@ -72,11 +76,11 @@ class GroupHome extends StatelessWidget {
                           children: [
                             TextSpan(
                               text: 'teamix',
-                              style: TextStyle(color: _ink),
+                              style: TextStyle(color: ink),
                             ),
                             TextSpan(
                               text: '.',
-                              style: TextStyle(color: Color(0xFFFF5949)),
+                              style: TextStyle(color: teamixLogoAccent),
                             ),
                           ],
                         ),
@@ -92,7 +96,7 @@ class GroupHome extends StatelessWidget {
                   SizedBox.square(
                     dimension: 36,
                     child: Material(
-                      color: const Color(0xFFEAF4ED),
+                      color: teamixAccountBackground,
                       shape: const CircleBorder(),
                       child: InkWell(
                         customBorder: const CircleBorder(),
@@ -101,7 +105,7 @@ class GroupHome extends StatelessWidget {
                           message: '모임 메뉴',
                           child: Icon(
                             Icons.more_horiz,
-                            color: Color(0xFF739680),
+                            color: teamixPrimary,
                           ),
                         ),
                       ),
@@ -116,13 +120,13 @@ class GroupHome extends StatelessWidget {
                     width: 49,
                     height: 49,
                     decoration: BoxDecoration(
-                      color: const Color(0xFFEFF7F1),
+                      color: mint,
                       borderRadius: BorderRadius.circular(16),
                     ),
                     child: const Icon(
                       Icons.filter_vintage_outlined,
                       size: 29,
-                      color: Color(0xFF739680),
+                      color: teamixPrimary,
                     ),
                   ),
                   const SizedBox(width: 13),
@@ -136,7 +140,7 @@ class GroupHome extends StatelessWidget {
                             fontSize: 25,
                             fontWeight: FontWeight.w800,
                             letterSpacing: -1,
-                            color: _ink,
+                            color: ink,
                           ),
                         ),
                         const SizedBox(height: 6),
@@ -146,14 +150,14 @@ class GroupHome extends StatelessWidget {
                             vertical: 4,
                           ),
                           decoration: BoxDecoration(
-                            color: const Color(0xFFEFF7F1),
+                            color: mint,
                             borderRadius: BorderRadius.circular(12),
                           ),
                           child: const Text(
                             '운영진',
                             style: TextStyle(
                               fontSize: 10,
-                              color: Color(0xFF739680),
+                              color: teamixPrimary,
                             ),
                           ),
                         ),
@@ -192,7 +196,7 @@ class GroupHome extends StatelessWidget {
               ),
               const SizedBox(height: 16),
               Material(
-                color: const Color(0xFFF4F1FA),
+                color: lilac,
                 borderRadius: BorderRadius.circular(14),
                 child: InkWell(
                   borderRadius: BorderRadius.circular(14),
@@ -206,7 +210,7 @@ class GroupHome extends StatelessWidget {
                           style: TextStyle(
                             fontSize: 12,
                             fontWeight: FontWeight.w600,
-                            color: Color(0xFF756583),
+                            color: teamixRequestForeground,
                           ),
                         ),
                         Spacer(),
@@ -214,7 +218,7 @@ class GroupHome extends StatelessWidget {
                           '확인하기 ›',
                           style: TextStyle(
                             fontSize: 10,
-                            color: Color(0xFF756583),
+                            color: teamixRequestForeground,
                           ),
                         ),
                       ],
@@ -231,7 +235,7 @@ class GroupHome extends StatelessWidget {
                       style: TextStyle(
                         fontSize: 15,
                         fontWeight: FontWeight.w800,
-                        color: _ink,
+                        color: ink,
                       ),
                     ),
                   ),
@@ -239,7 +243,7 @@ class GroupHome extends StatelessWidget {
                     onPressed: () => _preview(context, '소모임 전체 목록'),
                     child: const Text(
                       '전체 보기 ›',
-                      style: TextStyle(fontSize: 10, color: Color(0xFF9399A5)),
+                      style: TextStyle(fontSize: 10, color: teamixMuted),
                     ),
                   ),
                 ],
@@ -248,8 +252,8 @@ class GroupHome extends StatelessWidget {
               _Activity(
                 title: '작은 아이디어, 함께 만들기',
                 questions: '희망 역할 · 가능 시간 · 경험 수준',
-                color: const Color(0xFFEFF7F1),
-                accent: const Color(0xFF739680),
+                color: mint,
+                accent: teamixPrimary,
                 onDetail: () => _preview(context, '소모임 상세보기'),
                 onEdit: () => _preview(context, '소모임 내용·상태 수정'),
               ),
@@ -257,8 +261,8 @@ class GroupHome extends StatelessWidget {
               _Activity(
                 title: '메이커스 미니 프로젝트',
                 questions: '희망 역할 · 관심 분야',
-                color: const Color(0xFFFFF4E8),
-                accent: const Color(0xFFAD886A),
+                color: butter,
+                accent: teamixPeachAccent,
                 onDetail: () => _preview(context, '소모임 상세보기'),
                 onEdit: () => _preview(context, '소모임 내용·상태 수정'),
               ),
@@ -271,13 +275,19 @@ class GroupHome extends StatelessWidget {
 }
 
 class _Action extends StatelessWidget {
-  const _Action({required this.icon, required this.text, required this.onTap});
+  const _Action({
+    required this.icon,
+    required this.text,
+    required this.onTap,
+  });
+
   final IconData icon;
   final String text;
   final VoidCallback onTap;
+
   @override
   Widget build(BuildContext context) => Material(
-    color: const Color(0xFFF6F7F8),
+    color: teamixActionBackground,
     borderRadius: BorderRadius.circular(12),
     child: InkWell(
       borderRadius: BorderRadius.circular(12),
@@ -287,12 +297,15 @@ class _Action extends StatelessWidget {
         child: Row(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Icon(icon, size: 13, color: const Color(0xFF727A8B)),
+            Icon(icon, size: 13, color: teamixActionForeground),
             const SizedBox(width: 4),
             Flexible(
               child: Text(
                 text,
-                style: const TextStyle(fontSize: 11, color: Color(0xFF727A8B)),
+                style: const TextStyle(
+                  fontSize: 11,
+                  color: teamixActionForeground,
+                ),
               ),
             ),
           ],
@@ -311,9 +324,11 @@ class _Activity extends StatelessWidget {
     required this.onDetail,
     required this.onEdit,
   });
+
   final String title, questions;
   final Color color, accent;
   final VoidCallback onDetail, onEdit;
+
   @override
   Widget build(BuildContext context) => Container(
     padding: const EdgeInsets.all(17),
@@ -326,14 +341,17 @@ class _Activity extends StatelessWidget {
       children: [
         Row(
           children: [
-            Text('프로젝트', style: TextStyle(fontSize: 10, color: accent)),
+            Text(
+              '프로젝트',
+              style: TextStyle(fontSize: 10, color: accent),
+            ),
             const Spacer(),
             Container(
               height: 22,
               alignment: Alignment.center,
               padding: const EdgeInsets.symmetric(horizontal: 7),
               decoration: BoxDecoration(
-                color: Colors.white,
+                color: teamixBackground,
                 borderRadius: BorderRadius.circular(10),
               ),
               child: Text(
@@ -345,7 +363,7 @@ class _Activity extends StatelessWidget {
             SizedBox.square(
               dimension: 22,
               child: Material(
-                color: Colors.white.withAlpha(180),
+                color: teamixBackground.withAlpha(180),
                 shape: CircleBorder(
                   side: BorderSide(color: accent.withAlpha(45)),
                 ),
@@ -372,7 +390,7 @@ class _Activity extends StatelessWidget {
             fontSize: 15,
             fontWeight: FontWeight.w700,
             letterSpacing: -.5,
-            color: _ink,
+            color: ink,
           ),
         ),
         const SizedBox(height: 15),
