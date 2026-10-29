@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "834695879387",
+    "project_id": "teamix-309c0",
+    "storage_bucket": "teamix-309c0.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:834695879387:android:a42654a446347d1a65cafe",
+        "android_client_info": {
+          "package_name": "com.example.teamix"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyDcWbsh-57N2hWPebeUpZ8jQtoAiE8Y4mI"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
