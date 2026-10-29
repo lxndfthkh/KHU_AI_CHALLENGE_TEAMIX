@@ -3,6 +3,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 
 import 'data/demo_group_repository.dart';
 import 'data/group_repository.dart';
+import 'screens/my_groups_home.dart';
 import 'screens/onboarding/auth.dart';
 import 'screens/onboarding/create_group.dart';
 import 'screens/onboarding/group_preview.dart';
@@ -15,21 +16,38 @@ import 'widgets/onboarding_widgets.dart';
 
 export 'theme.dart' show ink, coral, mint, butter, lilac;
 
-// Pre-home prototype only: Auth is real; membership and invitation fixtures are not persisted.
+// Auth is real; membership and invitation fixtures are not persisted.
 class TeamixApp extends StatelessWidget {
-  const TeamixApp({super.key});
+  const TeamixApp({
+    super.key,
+    this.demoMode = false,
+    this.showEmpty = false,
+  });
+
+  final bool demoMode;
+  final bool showEmpty;
 
   @override
   Widget build(BuildContext context) => MaterialApp(
     title: 'TEAMIX',
     debugShowCheckedModeBanner: false,
     theme: buildTeamixTheme(),
-    home: const EntryScreen(),
+    home: EntryScreen(
+      demoMode: demoMode,
+      showEmpty: showEmpty,
+    ),
   );
 }
 
 class EntryScreen extends StatefulWidget {
-  const EntryScreen({super.key});
+  const EntryScreen({
+    super.key,
+    this.demoMode = false,
+    this.showEmpty = false,
+  });
+
+  final bool demoMode;
+  final bool showEmpty;
 
   @override
   State<EntryScreen> createState() => _EntryScreenState();
@@ -38,7 +56,7 @@ class EntryScreen extends StatefulWidget {
 class _EntryScreenState extends State<EntryScreen> {
   String page = 'loading', invite = '', group = '', notice = '';
 
-  final GroupRepository groupRepository = DemoGroupRepository();
+  late GroupRepository groupRepository;
 
   final email = TextEditingController(),
       password = TextEditingController(),
@@ -53,6 +71,19 @@ class _EntryScreenState extends State<EntryScreen> {
 
   final categories = <String>{};
 
+  static const onboardingPages = {
+    'loading',
+    'welcome',
+    'terms',
+    'signup',
+    'login',
+    'invite',
+    'preview',
+    'notice',
+    'create',
+    'share',
+  };
+
   User? get currentUser {
     try {
       return FirebaseAuth.instance.currentUser;
@@ -64,7 +95,19 @@ class _EntryScreenState extends State<EntryScreen> {
   @override
   void initState() {
     super.initState();
+
+    groupRepository = DemoGroupRepository(
+      seedExamples: widget.demoMode && !widget.showEmpty,
+    );
+
+    // 시연·홈 테스트는 Firebase 초기화나 인증을 기다리지 않는다.
+    if (widget.demoMode) {
+      page = 'boundary';
+      return;
+    }
+
     invite = Uri.base.queryParameters['invite'] ?? '';
+
     Future.microtask(() async {
       try {
         await FirebaseAuth.instance.authStateChanges().first;
@@ -98,8 +141,9 @@ class _EntryScreenState extends State<EntryScreen> {
     if (mounted) setState(() => page = p);
   }
 
-  void toast(String s) =>
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(s)));
+  void toast(String text) => ScaffoldMessenger.of(context).showSnackBar(
+    SnackBar(content: Text(text)),
+  );
 
   void route() {
     if (invite.isNotEmpty) {
@@ -115,10 +159,10 @@ class _EntryScreenState extends State<EntryScreen> {
   }
 
   void checkInvite() {
-    final v = invite.trim().toUpperCase();
+    final value = invite.trim().toUpperCase();
     group = groupRepository.invitedGroupName;
 
-    if (!groupRepository.isValidInvite(v)) {
+    if (!groupRepository.isValidInvite(value)) {
       notice = '초대가 만료되었거나 올바르지 않아요.';
     } else if (groupRepository.membershipStatus(group) == 'pending') {
       notice = '이미 요청했어요. 운영진 승인을 기다려 주세요.';
@@ -149,14 +193,17 @@ class _EntryScreenState extends State<EntryScreen> {
     }
 
     setState(() => busy = true);
+
     try {
       if (signup) {
-        final r = await FirebaseAuth.instance.createUserWithEmailAndPassword(
+        final result =
+            await FirebaseAuth.instance.createUserWithEmailAndPassword(
           email: email.text.trim(),
           password: password.text,
         );
+
         try {
-          await r.user?.updateDisplayName(nickname.text.trim());
+          await result.user?.updateDisplayName(nickname.text.trim());
         } catch (_) {
           if (mounted) toast('계정은 생성됐지만 닉네임 저장에 실패했어요.');
         }
@@ -202,26 +249,51 @@ class _EntryScreenState extends State<EntryScreen> {
   }
 
   Future<void> signOut() async {
+    if (busy) return;
+    setState(() => busy = true);
+
     try {
-      await FirebaseAuth.instance.signOut();
+      // 시연용 로그아웃은 실제 Firebase 계정에 영향을 주지 않는다.
+      if (!widget.demoMode) {
+        await FirebaseAuth.instance.signOut();
+      }
+
+      if (!mounted) return;
+
       groupRepository.clearMemberships();
+      clearInvite();
       password.clear();
       confirmation.clear();
-      if (mounted) go('welcome');
+      go('welcome');
     } catch (_) {
       if (mounted) toast('로그아웃하지 못했어요.');
+    } finally {
+      if (mounted) setState(() => busy = false);
     }
+  }
+
+  void toggleDemoGroups() {
+    if (!widget.demoMode || busy) return;
+
+    setState(() {
+      groupRepository = DemoGroupRepository(
+        seedExamples: groupRepository.memberships.isEmpty,
+      );
+    });
   }
 
   void termsDetail() => showDialog<void>(
     context: context,
-    builder: (c) => AlertDialog(
+    builder: (dialogContext) => AlertDialog(
       title: const Text('개발용 임시 약관'),
       content: const Text(
         '실제 약관·처리방침 및 동의 이력 저장은 아직 구현되지 않았습니다. 테스트 계정만 사용하세요.',
       ),
       actions: [
-        TextButton(onPressed: () => Navigator.pop(c), child: const Text('닫기')),
+        TextButton(
+          onPressed: () => Navigator.pop(dialogContext),
+          child: const Text('닫기'),
+        ),
       ],
     ),
   );
@@ -250,6 +322,7 @@ class _EntryScreenState extends State<EntryScreen> {
     }
 
     group = name.text.trim();
+
     if (groupRepository.containsGroup(group)) {
       toast('시연에서는 중복 이름 대신 다른 이름을 입력해 주세요.');
       return;
@@ -257,17 +330,6 @@ class _EntryScreenState extends State<EntryScreen> {
 
     groupRepository.createGroup(group);
     go('share');
-  }
-
-  String statusLabel(String status) {
-    switch (status) {
-      case 'pending':
-        return '승인 대기';
-      case 'owner':
-        return '대표자';
-      default:
-        return '정식 멤버';
-    }
   }
 
   List<Widget> body() {
@@ -279,7 +341,6 @@ class _EntryScreenState extends State<EntryScreen> {
           ui.title('teamix.'),
           const Center(child: CircularProgressIndicator()),
         ];
-
       case 'welcome':
         return buildWelcomeContent(
           ui: ui,
@@ -287,23 +348,23 @@ class _EntryScreenState extends State<EntryScreen> {
           onSignup: () => go('terms'),
           onLogin: () => go('login'),
         );
-
       case 'terms':
         return buildTermsContent(
           ui: ui,
           terms: terms,
           privacy: privacy,
-          onAllChanged: (v) => setState(() {
-            terms = v ?? false;
-            privacy = v ?? false;
+          onAllChanged: (value) => setState(() {
+            terms = value ?? false;
+            privacy = value ?? false;
           }),
-          onTermsChanged: (v) => setState(() => terms = v ?? false),
-          onPrivacyChanged: (v) => setState(() => privacy = v ?? false),
+          onTermsChanged: (value) =>
+              setState(() => terms = value ?? false),
+          onPrivacyChanged: (value) =>
+              setState(() => privacy = value ?? false),
           onDetail: termsDetail,
           onNext: () => go('signup'),
           onBack: () => go('welcome'),
         );
-
       case 'signup':
       case 'login':
         final signup = page == 'signup';
@@ -318,7 +379,6 @@ class _EntryScreenState extends State<EntryScreen> {
           onResetPassword: resetPassword,
           onBack: () => go(signup ? 'terms' : 'welcome'),
         );
-
       case 'invite':
         return buildInviteContent(
           ui: ui,
@@ -333,7 +393,6 @@ class _EntryScreenState extends State<EntryScreen> {
             go('boundary');
           },
         );
-
       case 'preview':
         return buildGroupPreviewContent(
           ui: ui,
@@ -349,13 +408,11 @@ class _EntryScreenState extends State<EntryScreen> {
             go('boundary');
           },
         );
-
       case 'notice':
         return [
           ui.panel(butter, [ui.title(notice)]),
           ui.button('다음', () => go('boundary')),
         ];
-
       case 'create':
         return buildCreateGroupContent(
           ui: ui,
@@ -367,85 +424,92 @@ class _EntryScreenState extends State<EntryScreen> {
           onCreate: createGroup,
           onCancel: () => go('boundary'),
         );
-
       case 'share':
         return buildShareInviteContent(
           ui: ui,
           group: group,
           onSkip: () => go('boundary'),
         );
-
       default:
-        final memberships = groupRepository.memberships;
-        return [
-          ui.title('홈 진입 준비 완료'),
-          const Text('여기는 Mainhome 직전 연결 지점입니다. 홈 화면은 구현 범위에 포함하지 않았습니다.'),
-          ui.panel(memberships.isEmpty ? butter : mint, [
-            Text(
-              memberships.isEmpty
-                  ? '소속·대기 모임 없음 → 빈 Mainhome으로 연결 예정'
-                  : '소속·대기 모임 있음 → Mainhome 목록으로 연결 예정',
-            ),
-            ...memberships.entries.map(
-              (e) => Padding(
-                padding: const EdgeInsets.only(top: 12),
-                child: Text('${e.key} · ${statusLabel(e.value)}'),
-              ),
-            ),
-          ]),
-          ui.button('모임 참가하기', () => go('invite')),
-          ui.button('모임 만들기', () => go('create')),
-        ];
+        // 홈은 build()에서 별도 Scaffold로 표시한다.
+        return const <Widget>[];
+    }
+  }
+
+  void handleBack(bool didPop, Object? result) {
+    if (didPop || busy) return;
+
+    if (widget.demoMode || currentUser != null) {
+      // 시연 로그아웃 후 welcome에서는 홈으로 되돌리지 않는다.
+      if (widget.demoMode &&
+          {'welcome', 'terms', 'signup', 'login'}.contains(page)) {
+        go(page == 'signup' ? 'terms' : 'welcome');
+        return;
+      }
+      clearInvite();
+      go('boundary');
+    } else {
+      go(page == 'signup' ? 'terms' : 'welcome');
     }
   }
 
   @override
-  Widget build(BuildContext context) => PopScope(
-    canPop: false,
-    onPopInvokedWithResult: (didPop, result) {
-      if (didPop || busy) return;
-      if (currentUser == null) {
-        go(page == 'signup' ? 'terms' : 'welcome');
-      } else {
-        clearInvite();
-        go('boundary');
-      }
-    },
-    child: Scaffold(
-      appBar: AppBar(
-        title: const Text(
-          'teamix.',
-          style: TextStyle(fontWeight: FontWeight.w900),
+  Widget build(BuildContext context) {
+    final Widget content;
+
+    if (!onboardingPages.contains(page)) {
+      content = MyGroupsHome(
+        repository: groupRepository,
+        demoMode: widget.demoMode,
+        busy: busy,
+        onCreateGroup: () => go('create'),
+        onJoinGroup: () => go('invite'),
+        onSignOut: signOut,
+        onToggleDemoGroups: toggleDemoGroups,
+      );
+    } else {
+      content = Scaffold(
+        appBar: AppBar(
+          title: const Text(
+            'teamix.',
+            style: TextStyle(fontWeight: FontWeight.w900),
+          ),
+          actions: [
+            if (!widget.demoMode && currentUser != null)
+              IconButton(
+                tooltip: '로그아웃',
+                icon: const Icon(Icons.logout),
+                onPressed: busy ? null : signOut,
+              ),
+          ],
         ),
-        actions: [
-          if (currentUser != null)
-            IconButton(
-              tooltip: '로그아웃',
-              icon: const Icon(Icons.logout),
-              onPressed: busy ? null : signOut,
-            ),
-        ],
-      ),
-      body: SafeArea(
-        child: Center(
-          child: ConstrainedBox(
-            constraints: const BoxConstraints(maxWidth: 440),
-            child: ListView(
-              key: ValueKey(page),
-              padding: const EdgeInsets.all(24),
-              children: [
-                OnboardingWidgets(busy: busy).panel(lilac, [
-                  const Text(
-                    '개발용 · 인증만 실제 연결. 모임·초대·참여 요청은 메모리 시연이며 새로고침 시 초기화됩니다.',
-                    style: TextStyle(fontSize: 12),
-                  ),
-                ]),
-                ...body(),
-              ],
+        body: SafeArea(
+          child: Center(
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 440),
+              child: ListView(
+                key: ValueKey(page),
+                padding: const EdgeInsets.all(24),
+                children: [
+                  OnboardingWidgets(busy: busy).panel(lilac, [
+                    const Text(
+                      '개발용 · 인증만 실제 연결. 모임·초대·참여 요청은 메모리 시연이며 새로고침 시 초기화됩니다.',
+                      style: TextStyle(fontSize: 12),
+                    ),
+                  ]),
+                  ...body(),
+                ],
+              ),
             ),
           ),
         ),
-      ),
-    ),
-  );
+      );
+    }
+
+    return PopScope(
+      canPop: false,
+      onPopInvokedWithResult: handleBack,
+      child: content,
+    );
+  }
 }
