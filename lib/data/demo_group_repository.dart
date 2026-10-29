@@ -15,7 +15,7 @@ class DemoGroupRepository implements GroupRepository {
 
   static const Map<String, List<String>> exampleActivities = {
     '경희 메이커스': [
-      '작은 아이디어, 함께 만들기',
+      '캠퍼스 불편 해결 미니 프로젝트',
       '메이커스 미니 프로젝트',
     ],
     '주말 산책 모임': [
@@ -28,6 +28,27 @@ class DemoGroupRepository implements GroupRepository {
     ],
   };
 
+  // In-memory UI fixtures only; DateTime becomes Timestamp in a future adapter.
+  static List<DemoSubgroup> subgroupsFor(String groupName) => [
+    for (final title in exampleActivities[groupName] ?? const <String>[])
+      DemoSubgroup(
+        groupId: groupName,
+        title: title,
+        description: '캠퍼스의 작은 불편을 찾고,\n팀별로 해결 아이디어를 만드는 활동이에요.',
+        goal: '캠퍼스 불편 해결',
+        recruitmentCapacity: 20,
+        applicationCount: 12,
+        deadline: DateTime(2026, 10, 30, 15),
+        status: 'recruiting',
+        matchingSettings: const {
+          'teamCount': 4,
+          'teamCapacities': [5, 5, 5, 5],
+          'method': 'balanced',
+          'priority': ['role', 'time', 'experience', 'size'],
+          'requireCommonTime': false,
+        },
+      ),
+  ];
   final Map<String, String> _memberships = <String, String>{};
 
   @override
@@ -63,4 +84,24 @@ class DemoGroupRepository implements GroupRepository {
   void clearMemberships() {
     _memberships.clear();
   }
+}
+
+
+/// Display fixture, not a Firestore document or an authorization source.
+class DemoSubgroup {
+  const DemoSubgroup({
+    required this.groupId,
+    required this.title,
+    required this.description,
+    required this.goal,
+    required this.recruitmentCapacity,
+    required this.applicationCount,
+    required this.deadline,
+    required this.status,
+    required this.matchingSettings,
+  });
+  final String groupId, title, description, goal, status;
+  final int recruitmentCapacity, applicationCount;
+  final DateTime deadline;
+  final Map<String, Object> matchingSettings;
 }

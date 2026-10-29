@@ -1,13 +1,27 @@
 import 'package:flutter/material.dart';
 
 import '../theme.dart';
+import '../data/demo_group_repository.dart';
+import 'subgroup_detail_screen.dart';
 import 'matching_settings_screen.dart';
 
 /// UI preview only: operator access here is not an authorization decision.
 class GroupHome extends StatelessWidget {
-  const GroupHome({super.key, this.groupName = '경희 메이커스'});
+  const GroupHome({
+    super.key,
+    this.groupName = '경희 메이커스',
+    this.isOperator = false,
+  });
 
   final String groupName;
+  final bool isOperator;
+  void _detail(BuildContext context, DemoSubgroup subgroup) {
+    Navigator.of(context).push<void>(MaterialPageRoute<void>(
+      builder: (_) => SubgroupDetailScreen(
+        groupName: groupName, subgroup: subgroup, isOperator: isOperator,
+      ),
+    ));
+  }
 
   void _preview(BuildContext context, String feature) {
     ScaffoldMessenger.of(context).showSnackBar(
@@ -156,8 +170,8 @@ class GroupHome extends StatelessWidget {
                             color: mint,
                             borderRadius: BorderRadius.circular(12),
                           ),
-                          child: const Text(
-                            '운영진',
+                          child: Text(
+                            isOperator ? '운영진' : '부원',
                             style: TextStyle(
                               fontSize: 10,
                               color: teamixPrimary,
@@ -170,7 +184,7 @@ class GroupHome extends StatelessWidget {
                 ],
               ),
               const SizedBox(height: 19),
-              Row(
+              if (isOperator) Row(
                 children: [
                   Expanded(
                     child: _Action(
@@ -198,7 +212,7 @@ class GroupHome extends StatelessWidget {
                 ],
               ),
               const SizedBox(height: 16),
-              FilledButton.icon(
+              if (isOperator) FilledButton.icon(
                 onPressed: () => Navigator.of(context).push<void>(
                   MaterialPageRoute<void>(
                     builder: (_) => const MatchingSettingsScreen(),
@@ -208,7 +222,7 @@ class GroupHome extends StatelessWidget {
                 label: const Text('팀 편성'),
               ),
               const SizedBox(height: 16),
-              Material(
+              if (isOperator) Material(
                 color: lilac,
                 borderRadius: BorderRadius.circular(14),
                 child: InkWell(
@@ -262,23 +276,20 @@ class GroupHome extends StatelessWidget {
                 ],
               ),
               const SizedBox(height: 6),
-              _Activity(
-                title: '작은 아이디어, 함께 만들기',
-                questions: '희망 역할 · 가능 시간 · 경험 수준',
-                color: mint,
-                accent: teamixPrimary,
-                onDetail: () => _preview(context, '소모임 상세보기'),
-                onEdit: () => _preview(context, '소모임 내용·상태 수정'),
-              ),
-              const SizedBox(height: 10),
-              _Activity(
-                title: '메이커스 미니 프로젝트',
-                questions: '희망 역할 · 관심 분야',
-                color: butter,
-                accent: teamixPeachAccent,
-                onDetail: () => _preview(context, '소모임 상세보기'),
-                onEdit: () => _preview(context, '소모임 내용·상태 수정'),
-              ),
+              for (final subgroup in DemoGroupRepository.subgroupsFor(groupName))
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 10),
+                  child: _Activity(
+                    title: subgroup.title,
+                    questions: '희망 역할 · 가능 시간 · 경험 수준',
+                    color: mint,
+                    accent: teamixPrimary,
+                    onDetail: () => _detail(context, subgroup),
+                    onEdit: isOperator
+                        ? () => _preview(context, '소모임 내용·상태 수정')
+                        : null,
+                  ),
+                ),
             ],
           ),
         ),
@@ -340,7 +351,8 @@ class _Activity extends StatelessWidget {
 
   final String title, questions;
   final Color color, accent;
-  final VoidCallback onDetail, onEdit;
+  final VoidCallback onDetail;
+  final VoidCallback? onEdit;
 
   @override
   Widget build(BuildContext context) => Container(
@@ -373,7 +385,7 @@ class _Activity extends StatelessWidget {
               ),
             ),
             const SizedBox(width: 6),
-            SizedBox.square(
+            if (onEdit != null) SizedBox.square(
               dimension: 22,
               child: Material(
                 color: teamixBackground.withAlpha(180),
@@ -432,3 +444,4 @@ class _Activity extends StatelessWidget {
     ),
   );
 }
+

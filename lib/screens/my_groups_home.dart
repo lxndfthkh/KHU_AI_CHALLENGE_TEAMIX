@@ -168,16 +168,16 @@ class MyGroupsHome extends StatelessWidget {
   }
 
   void _openGroup(BuildContext context, String name, String status) {
-    // 기존 GroupHome은 경희 메이커스 운영진용 하드코딩 시연 화면이다.
-    // 실제 권한 검증은 아니며, 다른 모임/부원에게 잘못 연결하지 않는다.
-    if (status == 'owner') {
-      Navigator.of(context).push(
-        MaterialPageRoute<void>(builder: (_) => GroupHome(groupName: name)),
-      );
+    if (status != 'owner' && status != 'member' && status != 'admin') {
+      _notice(context, '모임 상세는 아직 연결되지 않은 시연 화면이에요.');
       return;
     }
-
-    _notice(context, '모임 상세는 아직 연결되지 않은 시연 화면이에요.');
+    Navigator.of(context).push<void>(MaterialPageRoute<void>(
+      builder: (_) => GroupHome(
+        groupName: name,
+        isOperator: status == 'owner',
+      ),
+    ));
   }
 
   Widget _card(BuildContext context, MapEntry<String, String> entry) {
@@ -488,3 +488,4 @@ class _EmptyGroups extends StatelessWidget {
     ),
   );
 }
+
