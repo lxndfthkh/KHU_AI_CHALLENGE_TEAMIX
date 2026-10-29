@@ -1,1 +1,3 @@
 ortools==9.14.6206
+fastapi
+uvicorn
