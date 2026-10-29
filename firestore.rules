@@ -193,10 +193,20 @@ service cloud.firestore {
         && request.resource.data.responseVersion == 0 && request.resource.data.settingsVersion == 1
         && request.resource.data.publicationVersion == 0 && request.resource.data.currentPublicationId == null
         && request.resource.data.status == 'recruiting' && request.resource.data.deadline > request.time;
-      allow update: if counterUpdate(a)
-        || (operator(resource.data.groupId) && validActivity(request.resource.data)
-          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['title', 'description', 'goal',
+      function publicationUpdate() {
+        return request.resource.data.diff(resource.data).affectedKeys()
+            .hasOnly(['currentPublicationId', 'publicationVersion', 'updatedAt'])
+          && operator(resource.data.groupId) && resource.data.status in ['closed', 'active']
+          && request.resource.data.updatedAt == request.time
+          && request.resource.data.publicationVersion == resource.data.publicationVersion + 1
+          && request.resource.data.currentPublicationId is string
+          && !exists(/databases/$(database)/documents/activities/$(a)/publications/$(request.resource.data.currentPublicationId))
+          && getAfter(/databases/$(database)/documents/activities/$(a)/publications/$(request.resource.data.currentPublicationId)).data.version == request.resource.data.publicationVersion;
+      }
+      function contentUpdate() {
+        return request.resource.data.diff(resource.data).affectedKeys().hasOnly(['title', 'description', 'goal',
             'recruitmentCapacity', 'deadline', 'status', 'questions', 'matchingSettings', 'settingsVersion', 'updatedAt'])
+          && operator(resource.data.groupId) && validActivity(request.resource.data)
           && request.resource.data.updatedAt == request.time
           && (resource.data.applicationCount == 0 || request.resource.data.questions == resource.data.questions)
           && ((request.resource.data.questions == resource.data.questions
@@ -207,14 +217,9 @@ service cloud.firestore {
           && (request.resource.data.status == resource.data.status
             || (resource.data.status == 'recruiting' && request.resource.data.status == 'closed')
             || (resource.data.status == 'closed' && request.resource.data.status == 'active' && resource.data.currentPublicationId != null)
-            || (resource.data.status == 'active' && request.resource.data.status == 'ended')))
-        || (operator(resource.data.groupId) && validActivity(request.resource.data) && resource.data.status in ['closed', 'active']
-          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['currentPublicationId', 'publicationVersion', 'updatedAt'])
-          && request.resource.data.updatedAt == request.time
-          && request.resource.data.publicationVersion == resource.data.publicationVersion + 1
-          && request.resource.data.currentPublicationId is string
-          && !exists(/databases/$(database)/documents/activities/$(a)/publications/$(request.resource.data.currentPublicationId))
-          && getAfter(/databases/$(database)/documents/activities/$(a)/publications/$(request.resource.data.currentPublicationId)).data.version == request.resource.data.publicationVersion);
+            || (resource.data.status == 'active' && request.resource.data.status == 'ended'));
+      }
+      allow update: if counterUpdate(a) || publicationUpdate() || contentUpdate();
       match /applications/{uid} {
         function valid(d) {
           return d.keys().hasAll(['uid', 'groupId', 'status', 'answers', 'nicknameSnapshot', 'submittedAt', 'updatedAt'])

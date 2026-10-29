@@ -257,3 +257,19 @@ test('현재 회원 또는 만료된 초대로는 approved 요청을 재요청�
   await assertFails(setDoc(ref(db('member'), 'groups/g/joinRequests/member'),
     request('member', { requestedAt: serverTimestamp() })));
 });
+
+test('각 질문 선택지가 10개인 소모임도 정상 공개할 수 있다', async () => {
+  await seed('activities/a', activity({ status: 'closed', questions: manyQuestions }));
+  const s = db('owner');
+  const batch = writeBatch(s);
+  batch.set(ref(s, 'activities/a/publications/many-options'), {
+    version: 1, sourceDraftId: 'd', publishedBy: 'owner', publishedAt: serverTimestamp(),
+    teams: [{ teamId: 'team_1', participants: ['member'] }], displayProfiles: { member: '가온' },
+  });
+  batch.update(ref(s, 'activities/a'), {
+    currentPublicationId: 'many-options', publicationVersion: 1, updatedAt: serverTimestamp(),
+  });
+  await assertSucceeds(batch.commit());
+  const snapshot = await assertSucceeds(getDoc(ref(s, 'activities/a/publications/many-options')));
+  assert.equal(snapshot.data().version, 1);
+});
