@@ -1,14 +1,18 @@
 import 'package:flutter/material.dart';
+
 import '../theme.dart';
 import 'matching_settings_screen.dart';
+
 /// UI preview only: operator access here is not an authorization decision.
 class GroupHome extends StatelessWidget {
   const GroupHome({super.key});
+
   void _preview(BuildContext context, String feature) {
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(content: Text('$feature 기능은 아직 연결되지 않은 시연 화면이에요.')),
     );
   }
+
   void _more(BuildContext context) {
     showModalBottomSheet<void>(
       context: context,
@@ -43,6 +47,7 @@ class GroupHome extends StatelessWidget {
       ),
     );
   }
+
   @override
   Widget build(BuildContext context) => Scaffold(
     backgroundColor: teamixBackground,
@@ -279,15 +284,18 @@ class GroupHome extends StatelessWidget {
     ),
   );
 }
+
 class _Action extends StatelessWidget {
   const _Action({
     required this.icon,
     required this.text,
     required this.onTap,
   });
+
   final IconData icon;
   final String text;
   final VoidCallback onTap;
+
   @override
   Widget build(BuildContext context) => Material(
     color: teamixActionBackground,
@@ -317,6 +325,7 @@ class _Action extends StatelessWidget {
     ),
   );
 }
+
 class _Activity extends StatelessWidget {
   const _Activity({
     required this.title,
@@ -326,9 +335,11 @@ class _Activity extends StatelessWidget {
     required this.onDetail,
     required this.onEdit,
   });
+
   final String title, questions;
   final Color color, accent;
   final VoidCallback onDetail, onEdit;
+
   @override
   Widget build(BuildContext context) => Container(
     padding: const EdgeInsets.all(17),
