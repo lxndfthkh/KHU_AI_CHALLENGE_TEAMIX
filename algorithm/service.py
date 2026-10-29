@@ -146,6 +146,17 @@ class FormationService:
                     if all(c is not None for c in caps) and sum(caps) < N: errors.append('전체 최대 정원이 부족합니다')
                     for t in raw['teams']:
                         if t['capacity'] is not None and list(normalized['fixed'].values()).count(t['id']) > t['capacity']: errors.append(f'{t["id"]}: 고정 인원이 정원을 초과합니다')
+                    for role in sorted({r['role'] for r in normalized['required_roles']}):
+                        have=sum(p['answers'].get('role') == role for p in normalized['participants'])
+                        need=sum(max([r['minimum'] for r in normalized['required_roles'] if r['role'] == role and r['team'] == t['id']] or [0]) for t in raw['teams'])
+                        if have < need: errors.append(f'{role} 역할 희망자는 {have}명인데 필수 역할 최소 인원 합은 {need}명입니다')
+                    scope=normalized.get('scopeTeamIds')
+                    if scope is not None:
+                        caps={t['id']:t['capacity'] for t in raw['teams'] if t['id'] in scope}
+                        if caps and all(c is not None for c in caps.values()):
+                            seats=sum(c-list(normalized['fixed'].values()).count(t) for t,c in caps.items())
+                            placing=sum(p['id'] not in normalized['fixed'] for p in normalized['participants'])
+                            if seats < placing: errors.append(f'선택한 팀의 남은 자리는 {seats}개인데 새로 배정할 참가자는 {placing}명입니다')
                     return {'valid':not errors,'conflicts':errors,'versions':versions(s),'feasibilityProven':False}
                 except Invalid as e: return {'valid':False,'conflicts':[str(e)],'versions':versions(s),'feasibilityProven':False}
             if action == 'edit':
@@ -226,7 +237,7 @@ class FormationService:
                 response.update(public)
                 response['movementSummary']={'publishedMoved':internal['M_pub'], 'deletedTeamMoved':sum(t not in s['activity']['teamIds'] for i,t in s['published'].items() if i in result['assignments'])}
                 if s['published'] and internal['M_pub'] == 0:
-                    response['notice']='기존 팀원은 이동하지 않았습니다'
+                    response['notice']='기존 배정을 그대로 유지할 수 있어 기존 팀원은 이동하지 않았습니다. 새 참가자만 배정했습니다.'
             if status in ('STALE','ERROR'):
                 response={k:v for k,v in response.items() if k not in ('publicSummary','requiredStatus')}
             response.update(runId=run_id,applied=status in VALID)
