@@ -8,6 +8,7 @@ demo- 프로젝트 ID만 허용하므로 실제 Firebase 프로젝트에는 접�
 import json
 import os
 import unittest
+import urllib.error
 import urllib.request
 
 from test_main_adapter import main_docs
@@ -137,6 +138,33 @@ class FirestoreEmulatorTests(unittest.TestCase):
         data = json.dumps({'email': f'{uid}@example.test', 'password': 'password-123', 'returnSecureToken': True}).encode()
         with urllib.request.urlopen(urllib.request.Request(url, data, {'Content-Type': 'application/json'})) as r:
             return json.load(r)['idToken']
+
+    def client_get(self, path, uid):
+        """Read as a signed-in app user, so firestore.rules apply (Admin clients bypass them)."""
+        host = os.environ['FIRESTORE_EMULATOR_HOST']
+        url = f'http://{host}/v1/projects/{PROJECT}/databases/(default)/documents/{path}'
+        req = urllib.request.Request(url, headers={'Authorization': f'Bearer {self.id_token(uid)}'})
+        try:
+            with urllib.request.urlopen(req) as r:
+                return r.status
+        except urllib.error.HTTPError as e:
+            return e.code
+
+    def test_main_rules_expose_results_only_to_the_right_people(self):
+        svc = self.service()
+        self.assertTrue(svc.invoke('run', 'operator', self.body())['applied'])
+        svc.invoke('publish', 'operator', self.body())
+        run_id = next(self.db.collection('serverRuns').stream()).id
+        self.assertEqual(self.client_get('teamViews/a_u0', 'u0'), 200)
+        self.assertEqual(self.client_get('teamViews/a_u1', 'u0'), 403)
+        self.assertEqual(self.client_get('notifications/a_v1_u0', 'u0'), 200)
+        self.assertEqual(self.client_get('notifications/a_v1_u0', 'u1'), 403)
+        for path in ('drafts/a', 'publications/a_v1', 'activities/a/settings/matching'):
+            self.assertEqual(self.client_get(path, 'operator'), 200, path)
+            self.assertEqual(self.client_get(path, 'u0'), 403, path)
+        for path in (f'serverRuns/{run_id}', f'formationRuns/{run_id}', 'placementPreferences/g_u0_u1'):
+            self.assertEqual(self.client_get(path, 'operator'), 403, path)
+        self.assertEqual(self.client_get('placementPreferences/g_u0_u1', 'u0'), 200)
 
     def test_http_commands_require_valid_admin_token(self):
         from fastapi.testclient import TestClient

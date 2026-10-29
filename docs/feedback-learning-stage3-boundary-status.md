@@ -95,14 +95,14 @@ cd .. && npx firebase emulators:exec --only firestore,auth --project demo-teamix
 ```
 OR-Tools 9.14.6206은 Python 3.14 휠이 없으므로 3.11~3.12를 쓴다. Firestore 에뮬레이터는 Java가 필요하다.
 
-### 결과 (2026-10-30, main a20a15e 병합 후)
-- Python 90개 통과 (엔진 14 + main 어댑터 13 + 경계 23 + 13-1 34 + 에뮬레이터 6)
-- 루트 Rules 테스트 `npm run test:rules` 24개 통과
+### 결과 (2026-10-30, main 061b0ec 병합 후)
+- Python 91개 통과 (엔진 14 + main 어댑터 13 + 경계 23 + 13-1 34 + 에뮬레이터 7)
+  - 에뮬레이터 7번째: main 규칙 아래 로그인 토큰으로 읽기 — 참가원은 자기 teamView·알림만, 임원진은 drafts·publications·settings, serverRuns·formationRuns·남의 placementPreferences는 아무도 못 읽음
+- 루트 Rules 테스트 `npm run test:rules` 14개 통과 (main dca8e20의 평면 구조 규칙)
 - `functions` 단위 테스트 14개 통과
 - Flutter `flutter analyze` 문제 없음, `flutter test` 26개 통과
 
 ## 남은 완료 조건
-- **main 자체 불일치:** main의 `firestore.rules`·`firestore.indexes.json`은 예전 중첩 구조(`groups/{g}/memberships`, `activities/{a}/applications`)이고, `FIRESTORE.md`·`firestore.schema.json`과 실제 배포된 규칙(a20a15e)은 평면 구조다. a2f1680 병합에서 규칙 파일이 예전 것으로 남은 것으로 보인다. 이 상태로 `firebase deploy --only firestore`를 하면 배포된 평면 규칙이 예전 규칙으로 덮인다. main 담당자와 확인 필요. 3단계 서버는 Admin SDK라 규칙과 무관하게 동작한다.
 - **1~2단계 functions가 예전 구조:** `functions/src/index.js`와 `lib/data/feedback_learning_api.dart`는 예전 중첩 경로를 쓴다. main 구조로 다시 만들어야 한다(FIRESTORE.md의 createGroup, requestJoin, approveJoin, submitRegistration, setPlacementPreference 등). `functions/test/rules.test.cjs` 9개 중 5개 실패도 같은 원인이며 1f3467d에서도 실패했다.
 - `createActivity`가 `settings/matching`의 `questionCriteria`·`priority`를 저장해야 편성이 가능하다(프론트·서버 명령 구현 시).
 - 소모임 단위 비공개 선호 저장/상태 제한/서버 전용 prefVersion 및 앱 계약 변경.
