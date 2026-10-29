@@ -5,7 +5,8 @@ from firebase_admin import auth, firestore
 from fastapi import FastAPI, Depends, HTTPException
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from formation import Invalid
-from service import FormationService, Denied, Missing, Stale
+from service import Denied, Missing, Stale
+from validated_service import ValidatedFormationService
 from repository import FirestoreRepository
 
 bearer=HTTPBearer(auto_error=False)
@@ -22,7 +23,7 @@ def current_uid(credentials: HTTPAuthorizationCredentials=Depends(bearer)):
 
 def get_service():
     if not firebase_admin._apps: firebase_admin.initialize_app()
-    return FormationService(FirestoreRepository(firestore.client()))
+    return ValidatedFormationService(FirestoreRepository(firestore.client()))
 
 def create_app():
     app=FastAPI(title='TEAMIX formation',docs_url=None,redoc_url=None,openapi_url=None)
