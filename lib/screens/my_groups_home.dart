@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../data/demo_group_repository.dart';
 import '../data/group_repository.dart';
 import '../theme.dart';
+import 'group_card_palette.dart';
 import 'group_home.dart';
 
 class MyGroupsHome extends StatelessWidget {
@@ -26,9 +27,7 @@ class MyGroupsHome extends StatelessWidget {
   final VoidCallback? onToggleDemoGroups;
 
   void _notice(BuildContext context, String text) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text(text)),
-    );
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(text)));
   }
 
   void _add(BuildContext context) {
@@ -172,40 +171,35 @@ class MyGroupsHome extends StatelessWidget {
       _notice(context, '모임 상세는 아직 연결되지 않은 시연 화면이에요.');
       return;
     }
-    Navigator.of(context).push<void>(MaterialPageRoute<void>(
-      builder: (_) => GroupHome(
-        groupName: name,
-        isOperator: status == 'owner',
+    Navigator.of(context).push<void>(
+      MaterialPageRoute<void>(
+        builder: (_) =>
+            GroupHome(groupName: name, isOperator: status == 'owner'),
       ),
-    ));
+    );
   }
 
-  Widget _card(BuildContext context, MapEntry<String, String> entry) {
+  Widget _card(
+    BuildContext context,
+    MapEntry<String, String> entry,
+    int joinedIndex,
+  ) {
     final name = entry.key;
     final status = entry.value;
     final pending = status == 'pending';
-    final walking = name == '주말 산책 모임';
-
-    final background = pending ? lilac : walking ? butter : mint;
-    final accent = pending
-        ? teamixPurpleAccent
-        : walking
-        ? teamixPeachAccent
-        : teamixPrimary;
+    final palette = GroupCardPalette.forGroup(joinedIndex, isPending: pending);
 
     final activities =
         DemoGroupRepository.exampleActivities[name] ?? const <String>[];
 
     return _GroupCard(
       name: name,
-      color: background,
-      accent: accent,
+      color: palette.background,
+      accent: palette.accent,
       activities: activities,
       roleLabel: _statusLabel(status),
       pending: pending,
-      onTap: pending || busy
-          ? null
-          : () => _openGroup(context, name, status),
+      onTap: pending || busy ? null : () => _openGroup(context, name, status),
     );
   }
 
@@ -279,7 +273,12 @@ class MyGroupsHome extends StatelessWidget {
                 else
                   for (var i = 0; i < entries.length; i++) ...[
                     if (i > 0) const SizedBox(height: 8),
-                    _card(context, entries[i]),
+                    _card(
+                      context,
+                      entries[i],
+                      // Pending groups don't advance the joined-color rotation.
+                      entries.take(i).where((e) => e.value != 'pending').length,
+                    ),
                   ],
               ],
             ),
@@ -478,14 +477,9 @@ class _EmptyGroups extends StatelessWidget {
         const Text(
           '오른쪽 위 ＋를 눌러\n모임을 만들거나 초대 코드로 참여해보세요.',
           textAlign: TextAlign.center,
-          style: TextStyle(
-            fontSize: 12,
-            height: 1.9,
-            color: teamixEmptyBody,
-          ),
+          style: TextStyle(fontSize: 12, height: 1.9, color: teamixEmptyBody),
         ),
       ],
     ),
   );
 }
-
