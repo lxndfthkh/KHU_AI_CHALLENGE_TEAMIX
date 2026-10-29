@@ -1,0 +1,93 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function signedIn() { return request.auth != null; }
+    function member(gid) {
+      return signedIn() && exists(/databases/$(database)/documents/memberships/$(gid + '_' + request.auth.uid))
+        && get(/databases/$(database)/documents/memberships/$(gid + '_' + request.auth.uid)).data.status == 'approved';
+    }
+    function admin(gid) {
+      return member(gid) && get(/databases/$(database)/documents/memberships/$(gid + '_' + request.auth.uid)).data.role == 'admin';
+    }
+    function activity(aid) { return get(/databases/$(database)/documents/activities/$(aid)).data; }
+    function participant(aid) {
+      return signedIn() && exists(/databases/$(database)/documents/registrations/$(aid + '_' + request.auth.uid))
+        && get(/databases/$(database)/documents/registrations/$(aid + '_' + request.auth.uid)).data.status == 'submitted';
+    }
+    function validProfile(d) {
+      return d.keys().hasAll(['displayName','createdAt','updatedAt'])
+        && d.keys().hasOnly(['displayName','createdAt','updatedAt'])
+        && d.displayName is string && d.displayName.size() > 0 && d.displayName.size() <= 40;
+    }
+    match /users/{uid} {
+      allow read: if signedIn() && request.auth.uid == uid;
+      allow create: if signedIn() && request.auth.uid == uid && validProfile(request.resource.data)
+        && request.resource.data.createdAt == request.time && request.resource.data.updatedAt == request.time;
+      allow update: if signedIn() && request.auth.uid == uid && validProfile(request.resource.data)
+        && request.resource.data.createdAt == resource.data.createdAt && request.resource.data.updatedAt == request.time;
+      allow delete: if false;
+    }
+    match /groups/{gid} {
+      allow read: if member(gid);
+      allow write: if false;
+    }
+    match /memberships/{id} {
+      allow read: if signedIn() && (resource.data.userId == request.auth.uid || admin(resource.data.groupId)
+        || (member(resource.data.groupId) && resource.data.status == 'approved'));
+      allow write: if false;
+    }
+    match /invitations/{id} { allow read, write: if false; }
+    match /activities/{aid} {
+      allow read: if member(resource.data.groupId);
+      allow write: if false;
+      match /settings/{id} {
+        allow read: if admin(activity(aid).groupId);
+        allow write: if false;
+      }
+      match /questions/{id} {
+        allow read: if member(activity(aid).groupId);
+        allow write: if false;
+      }
+      match /feedbackSummary/{id} {
+        allow read: if admin(activity(aid).groupId);
+        allow write: if false;
+      }
+    }
+    match /registrations/{id} {
+      allow read: if signedIn() && member(resource.data.groupId)
+        && (resource.data.userId == request.auth.uid || admin(resource.data.groupId));
+      allow write: if false;
+    }
+    match /drafts/{id} {
+      allow read: if admin(resource.data.groupId);
+      allow write: if false;
+    }
+    match /publications/{id} {
+      allow read: if admin(resource.data.groupId);
+      allow write: if false;
+    }
+    match /teamViews/{id} {
+      allow read: if signedIn() && resource.data.userId == request.auth.uid
+        && member(resource.data.groupId) && participant(resource.data.activityId);
+      allow write: if false;
+    }
+    match /feedback/{id} {
+      allow read: if signedIn() && resource.data.userId == request.auth.uid && member(resource.data.groupId);
+      allow write: if false;
+    }
+    match /placementPreferences/{id} {
+      allow read: if signedIn() && resource.data.userId == request.auth.uid;
+      allow write: if false;
+    }
+    match /notifications/{id} {
+      allow read: if signedIn() && resource.data.userId == request.auth.uid;
+      allow update: if signedIn() && resource.data.userId == request.auth.uid
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['readAt'])
+        && request.resource.data.readAt == request.time;
+      allow create, delete: if false;
+    }
+    match /appConfig/{id} { allow read: if signedIn(); allow write: if false; }
+    match /_schema/{id} { allow read, write: if false; }
+    match /{document=**} { allow read, write: if false; }
+  }
+}
