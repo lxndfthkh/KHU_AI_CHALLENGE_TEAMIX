@@ -5,7 +5,9 @@ import 'matching_settings_screen.dart';
 
 /// UI preview only: operator access here is not an authorization decision.
 class GroupHome extends StatelessWidget {
-  const GroupHome({super.key});
+  const GroupHome({super.key, this.groupName = '경희 메이커스'});
+
+  final String groupName;
 
   void _preview(BuildContext context, String feature) {
     ScaffoldMessenger.of(context).showSnackBar(
@@ -135,8 +137,8 @@ class GroupHome extends StatelessWidget {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        const Text(
-                          '경희 메이커스',
+                        Text(
+                          groupName,
                           style: TextStyle(
                             fontSize: 25,
                             fontWeight: FontWeight.w800,
