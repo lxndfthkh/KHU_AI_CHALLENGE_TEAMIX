@@ -1,0 +1,15 @@
+const {test}=require('node:test');
+const assert=require('node:assert/strict');
+const V=require('../src/validation');
+const sample=()=>({title:'프로젝트',type:'project',formationMode:'balanced',teamIds:['t1','t2'],criteria:[{key:'time',priority:1},{key:'size',priority:2}],questions:[{id:'q1',key:'time',scale:['수 저녁','금 저녁'],multiSelect:true}]});
+test('settings normalize default capacities and require selected questions',()=>{const s=V.settings(sample());assert.deepEqual(s.capacity,{t1:null,t2:null});assert.equal(s.questions[0].required,true);});
+test('reject duplicate team IDs',()=>{const s=sample();s.teamIds=['t1','t1'];assert.throws(()=>V.settings(s),V.ValidationError);});
+test('reject a criterion without a selected question',()=>{const s=sample();s.criteria[0].key='role';assert.throws(()=>V.settings(s),V.ValidationError);});
+test('reject duplicate priorities',()=>{const s=sample();s.criteria[1].priority=1;assert.throws(()=>V.settings(s),V.ValidationError);});
+test('reject unknown capacities and extra engine requirements',()=>{const s=sample();s.capacity={unknown:3};assert.throws(()=>V.settings(s));delete s.capacity;s.extraRequirements=[{role:'dev'}];assert.throws(()=>V.settings(s));});
+const qs=[{id:'q1',questionVersion:2,scale:['수 저녁','금 저녁'],multiSelect:true}];
+test('valid selected answer',()=>assert.deepEqual(V.answers({q1:{questionVersion:2,value:['수 저녁']}},qs).q1.value,['수 저녁']));
+test('reject stale answer, missing answer, unselected answer',()=>{assert.throws(()=>V.answers({q1:{questionVersion:1,value:['수 저녁']}},qs));assert.throws(()=>V.answers({},qs));assert.throws(()=>V.answers({q1:{questionVersion:2,value:['수 저녁']},q2:{value:1}},qs));});
+test('reject invalid, empty and duplicate choices',()=>{for(const value of [[],['월 저녁'],['수 저녁','수 저녁']])assert.throws(()=>V.answers({q1:{questionVersion:2,value}},qs));});
+test('third active preference rejected, repeat target idempotent',()=>{V.canAddPreference([], 'a');V.canAddPreference(['a'],'b');V.canAddPreference(['a','b'],'b');assert.throws(()=>V.canAddPreference(['a','b'],'c'));});
+test('IDs cannot contain slashes',()=>assert.throws(()=>V.id('a/b')));
