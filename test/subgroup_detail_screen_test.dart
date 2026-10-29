@@ -1,10 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import '../lib/data/demo_group_repository.dart';
-import '../lib/screens/group_home.dart';
-import '../lib/screens/my_groups_home.dart';
-import '../lib/screens/subgroup_detail_screen.dart';
-import '../lib/theme.dart';
+import 'package:teamix/data/demo_group_repository.dart';
+import 'package:teamix/screens/group_home.dart';
+import 'package:teamix/screens/my_groups_home.dart';
+import 'package:teamix/screens/subgroup_detail_screen.dart';
+import 'package:teamix/theme.dart';
 
 void main() {
   Widget detail(bool isOperator) => MaterialApp(
