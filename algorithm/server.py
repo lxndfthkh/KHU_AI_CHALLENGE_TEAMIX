@@ -6,7 +6,7 @@ from teamix_engine.schema import InputError
 app = FastAPI()
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:5000"],
+    allow_origins=["http://localhost:5050"],
     allow_methods=["POST"],
     allow_headers=["*"],
 )

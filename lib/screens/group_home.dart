@@ -1,10 +1,13 @@
 import 'package:flutter/material.dart';
 
 import '../theme.dart';
+import 'matching_settings_screen.dart';
 
 /// UI preview only: operator access here is not an authorization decision.
 class GroupHome extends StatelessWidget {
-  const GroupHome({super.key});
+  const GroupHome({super.key, this.groupName = '경희 메이커스'});
+
+  final String groupName;
 
   void _preview(BuildContext context, String feature) {
     ScaffoldMessenger.of(context).showSnackBar(
@@ -134,8 +137,8 @@ class GroupHome extends StatelessWidget {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        const Text(
-                          '경희 메이커스',
+                        Text(
+                          groupName,
                           style: TextStyle(
                             fontSize: 25,
                             fontWeight: FontWeight.w800,
@@ -193,6 +196,16 @@ class GroupHome extends StatelessWidget {
                     ),
                   ),
                 ],
+              ),
+              const SizedBox(height: 16),
+              FilledButton.icon(
+                onPressed: () => Navigator.of(context).push<void>(
+                  MaterialPageRoute<void>(
+                    builder: (_) => const MatchingSettingsScreen(),
+                  ),
+                ),
+                icon: const Icon(Icons.groups_outlined),
+                label: const Text('팀 편성'),
               ),
               const SizedBox(height: 16),
               Material(

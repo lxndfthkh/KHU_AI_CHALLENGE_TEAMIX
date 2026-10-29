@@ -170,9 +170,9 @@ class MyGroupsHome extends StatelessWidget {
   void _openGroup(BuildContext context, String name, String status) {
     // 기존 GroupHome은 경희 메이커스 운영진용 하드코딩 시연 화면이다.
     // 실제 권한 검증은 아니며, 다른 모임/부원에게 잘못 연결하지 않는다.
-    if (name == '경희 메이커스' && status == 'owner') {
+    if (status == 'owner') {
       Navigator.of(context).push(
-        MaterialPageRoute<void>(builder: (_) => const GroupHome()),
+        MaterialPageRoute<void>(builder: (_) => GroupHome(groupName: name)),
       );
       return;
     }
