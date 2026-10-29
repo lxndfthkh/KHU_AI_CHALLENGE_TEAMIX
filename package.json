@@ -1,0 +1,16 @@
+{
+  "name": "teamix-firestore-rules-tests",
+  "private": true,
+  "type": "module",
+  "engines": {"node": ">=22"},
+  "scripts": {
+    "test:rules": "firebase emulators:exec --only firestore --project demo-teamix-rules \"npm run test:rules:unit\"",
+    "test:rules:unit": "node --test --test-concurrency=1 tests/rules/firestore.test.mjs",
+    "emulators:rules": "firebase emulators:start --only firestore --project demo-teamix-rules"
+  },
+  "devDependencies": {
+    "@firebase/rules-unit-testing": "^4.0.1",
+    "firebase": "^11.0.0",
+    "firebase-tools": "^14.0.0"
+  }
+}
