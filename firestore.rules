@@ -2,39 +2,296 @@ rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
     function signed() { return request.auth != null; }
-    function own(uid) { return signed() && request.auth.uid == uid; }
-    function active(g) { return signed() && exists(/databases/$(database)/documents/groups/$(g)/members/$(request.auth.uid)) && get(/databases/$(database)/documents/groups/$(g)/members/$(request.auth.uid)).data.status == 'active'; }
-    function officer(g) { return active(g) && get(/databases/$(database)/documents/groups/$(g)/members/$(request.auth.uid)).data.role == 'officer'; }
+    function self(uid) { return signed() && request.auth.uid == uid; }
+    function member(g) {
+      return signed() && exists(/databases/$(database)/documents/groups/$(g)/memberships/$(request.auth.uid));
+    }
+    function operator(g) {
+      return member(g) && get(/databases/$(database)/documents/groups/$(g)/memberships/$(request.auth.uid)).data.role in ['owner', 'admin'];
+    }
+    function activity(a) { return get(/databases/$(database)/documents/activities/$(a)).data; }
+    function activityAfter(a) { return getAfter(/databases/$(database)/documents/activities/$(a)).data; }
+    function text(v, max) { return v is string && v.size() > 0 && v.size() <= max; }
+    function questions(q) {
+      return q.keys().hasAll(['selected', 'roleOptions', 'timeOptions', 'interestOptions'])
+        && q.keys().hasOnly(['selected', 'roleOptions', 'timeOptions', 'interestOptions'])
+        && q.selected is list && q.selected.size() == q.selected.toSet().size()
+        && q.selected.hasOnly(['role', 'time', 'experience', 'interest'])
+        && q.roleOptions is list && q.timeOptions is list && q.interestOptions is list
+        && q.roleOptions.size() <= 30 && q.timeOptions.size() <= 30 && q.interestOptions.size() <= 30
+        && (!q.selected.hasAny(['role']) || q.roleOptions.size() > 0)
+        && (!q.selected.hasAny(['time']) || q.timeOptions.size() > 0)
+        && (!q.selected.hasAny(['interest']) || q.interestOptions.size() > 0);
+    }
+    function settings(s, q) {
+      return s.keys().hasAll(['teamCount', 'teamCapacities', 'method', 'priority', 'requireCommonTime'])
+        && s.keys().hasOnly(['teamCount', 'teamCapacities', 'method', 'priority', 'requireCommonTime', 'fixed', 'requiredRoles'])
+        && s.teamCount is int && s.teamCount > 0 && s.teamCount <= 100
+        && s.teamCapacities is list && s.teamCapacities.size() == s.teamCount
+        && s.method in ['balanced', 'similar'] && s.priority is list
+        && s.priority.toSet() == q.selected.toSet().union(['size'].toSet())
+        && s.priority.size() == s.priority.toSet().size()
+        && s.requireCommonTime is bool
+        && (!s.requireCommonTime || q.selected.hasAny(['time']))
+        && s.get('fixed', []) == [] && s.get('requiredRoles', []) == [];
+    }
+    function answerValid(ans, q) {
+      return ans is map && ans.keys().hasOnly(q.selected) && ans.keys().hasAll(q.selected)
+        && (!q.selected.hasAny(['role']) || (ans.role is string && ans.role in q.roleOptions))
+        && (!q.selected.hasAny(['time']) || (ans.time is list && ans.time.size() > 0
+          && ans.time.size() == ans.time.toSet().size() && ans.time.hasOnly(q.timeOptions)))
+        && (!q.selected.hasAny(['experience']) || (ans.experience is int && ans.experience >= 1 && ans.experience <= 5))
+        && (!q.selected.hasAny(['interest']) || (ans.interest is list && ans.interest.size() > 0
+          && ans.interest.size() == ans.interest.toSet().size() && ans.interest.hasOnly(q.interestOptions)));
+    }
+    function validActivity(d) {
+      return d.keys().hasAll(['groupId', 'title', 'description', 'goal', 'recruitmentCapacity',
+        'applicationCount', 'deadline', 'status', 'questions', 'matchingSettings', 'settingsVersion',
+        'responseVersion', 'currentPublicationId', 'publicationVersion', 'createdBy', 'createdAt', 'updatedAt'])
+        && d.keys().hasOnly(['groupId', 'title', 'description', 'goal', 'recruitmentCapacity',
+        'applicationCount', 'deadline', 'status', 'questions', 'matchingSettings', 'settingsVersion',
+        'responseVersion', 'currentPublicationId', 'publicationVersion', 'createdBy', 'createdAt', 'updatedAt'])
+        && text(d.title, 120) && d.description is string && d.description.size() <= 5000
+        && d.goal is string && d.goal.size() <= 2000 && d.groupId is string
+        && d.recruitmentCapacity is int && d.recruitmentCapacity > 0 && d.recruitmentCapacity <= 100
+        && d.applicationCount is int && d.applicationCount >= 0 && d.applicationCount <= d.recruitmentCapacity
+        && d.deadline is timestamp && d.status in ['recruiting', 'closed', 'active', 'ended']
+        && questions(d.questions) && settings(d.matchingSettings, d.questions)
+        && d.settingsVersion is int && d.responseVersion is int && d.publicationVersion is int
+        && (d.currentPublicationId == null || d.currentPublicationId is string)
+        && d.createdBy is string && d.createdAt is timestamp && d.updatedAt is timestamp;
+    }
+    function activeBefore(a) {
+      return exists(/databases/$(database)/documents/activities/$(a)/applications/$(request.auth.uid))
+        && get(/databases/$(database)/documents/activities/$(a)/applications/$(request.auth.uid)).data.status == 'submitted';
+    }
+    function activeAfter(a) {
+      return existsAfter(/databases/$(database)/documents/activities/$(a)/applications/$(request.auth.uid))
+        && getAfter(/databases/$(database)/documents/activities/$(a)/applications/$(request.auth.uid)).data.status == 'submitted';
+    }
+    function counterUpdate(a) {
+      let changed = request.resource.data.diff(resource.data).affectedKeys();
+      let before = activeBefore(a);
+      let after = activeAfter(a);
+      return changed.hasOnly(['applicationCount', 'responseVersion'])
+        && member(resource.data.groupId) && resource.data.currentPublicationId == null
+        && resource.data.publicationVersion == 0
+        && request.resource.data.applicationCount is int
+        && request.resource.data.applicationCount >= 0
+        && request.resource.data.applicationCount <= resource.data.recruitmentCapacity
+        && request.resource.data.responseVersion == resource.data.responseVersion + 1
+        && getAfter(/databases/$(database)/documents/activities/$(a)/applications/$(request.auth.uid)).data.updatedAt == request.time
+        && ((!before && after && request.resource.data.applicationCount == resource.data.applicationCount + 1)
+          || (before && !after && request.resource.data.applicationCount == resource.data.applicationCount - 1)
+          || (before && after && request.resource.data.applicationCount == resource.data.applicationCount
+            && getAfter(/databases/$(database)/documents/activities/$(a)/applications/$(request.auth.uid)).data
+              .diff(get(/databases/$(database)/documents/activities/$(a)/applications/$(request.auth.uid)).data).affectedKeys().hasAny(['answers'])));
+    }
+    function applicationCounters(a, delta) {
+      return activityAfter(a).applicationCount == activity(a).applicationCount + delta
+        && activityAfter(a).responseVersion == activity(a).responseVersion + 1;
+    }
+    function requestSchema(d, uid, g) {
+      return d.keys().hasAll(['uid', 'groupId', 'groupName', 'nickname', 'status', 'requestedAt', 'reviewedAt', 'reviewedBy', 'inviteId'])
+        && d.keys().hasOnly(['uid', 'groupId', 'groupName', 'nickname', 'status', 'requestedAt', 'reviewedAt', 'reviewedBy', 'inviteId'])
+        && d.uid == uid && d.groupId == g && text(d.groupName, 100) && text(d.nickname, 40) && d.inviteId is string;
+    }
+    function validInvite(g, i) {
+      let invite = get(/databases/$(database)/documents/groups/$(g)/invites/$(i)).data;
+      return invite.enabled && (invite.expiresAt == null || request.time < invite.expiresAt);
+    }
     match /users/{uid} {
-      allow read: if own(uid);
-      // Account/consents initialization is callable-only; user may edit displayName only.
-      allow update: if own(uid) && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['displayName']) && request.resource.data.displayName is string && request.resource.data.displayName.size() > 0 && request.resource.data.displayName.size() <= 80;
+      allow read: if self(uid);
+      allow create: if self(uid) && request.resource.data.keys().hasAll(['nickname', 'profileImagePath', 'createdAt'])
+        && request.resource.data.keys().hasOnly(['nickname', 'profileImagePath', 'createdAt'])
+        && text(request.resource.data.nickname, 40)
+        && (request.resource.data.profileImagePath == null || request.resource.data.profileImagePath is string)
+        && request.resource.data.createdAt == request.time;
+      allow update: if self(uid) && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['nickname', 'profileImagePath'])
+        && text(request.resource.data.nickname, 40)
+        && (request.resource.data.profileImagePath == null || request.resource.data.profileImagePath is string);
     }
     match /groups/{g} {
-      allow read: if active(g);
-      match /members/{uid} { allow read: if active(g); }
-      match /activities/{a} {
-        allow read: if active(g);
-        match /questions/{q} { allow read: if active(g); }
-        match /applications/{uid} { allow read: if active(g) && (own(uid) || officer(g)); }
-        match /draft/{doc} { allow read: if officer(g); }
-        match /formationRuns/{r} { allow read: if officer(g); }
-        match /teamVersions/{v} {
-          allow read: if officer(g);
-          match /teams/{t} {
-            // Firestore cannot redact fields. Never leak officer-only reviewSummary.
-            // Stage 4 must place aggregates in a separate officer-only document before
-            // participants can read documents containing that field.
-            allow read: if officer(g) || (active(g) && request.auth.uid in resource.data.members && !('reviewSummary' in resource.data) && get(/databases/$(database)/documents/groups/$(g)/activities/$(a)).data.publishedVersionId == v);
-          }
-        }
-        match /reviews/{uid} { allow read: if own(uid); }
+      allow read: if member(g);
+      allow create: if signed() && request.resource.data.keys().hasAll(['name', 'description', 'ownerUid', 'createdAt'])
+        && request.resource.data.keys().hasOnly(['name', 'description', 'ownerUid', 'createdAt'])
+        && text(request.resource.data.name, 100) && request.resource.data.description is string
+        && request.resource.data.description.size() <= 2000
+        && request.resource.data.ownerUid == request.auth.uid && request.resource.data.createdAt == request.time
+        && getAfter(/databases/$(database)/documents/groups/$(g)/memberships/$(request.auth.uid)).data.role == 'owner';
+      allow update: if operator(g) && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['name', 'description'])
+        && text(request.resource.data.name, 100) && request.resource.data.description is string
+        && request.resource.data.description.size() <= 2000;
+      match /memberships/{uid} {
+        allow read: if self(uid) || member(g);
+        allow create: if request.resource.data.keys().hasAll(['uid', 'groupId', 'nickname', 'role', 'joinedAt'])
+          && request.resource.data.keys().hasOnly(['uid', 'groupId', 'nickname', 'role', 'joinedAt'])
+          && request.resource.data.uid == uid && request.resource.data.groupId == g
+          && text(request.resource.data.nickname, 40) && request.resource.data.joinedAt == request.time
+          && ((self(uid) && request.resource.data.role == 'owner'
+            && !exists(/databases/$(database)/documents/groups/$(g))
+            && existsAfter(/databases/$(database)/documents/groups/$(g))
+            && getAfter(/databases/$(database)/documents/groups/$(g)).data.ownerUid == uid)
+          || (operator(g) && request.resource.data.role == 'member'
+            && get(/databases/$(database)/documents/groups/$(g)/joinRequests/$(uid)).data.status == 'pending'
+            && getAfter(/databases/$(database)/documents/groups/$(g)/joinRequests/$(uid)).data.status == 'approved'));
+        allow update: if (self(uid) && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['nickname'])
+            && text(request.resource.data.nickname, 40))
+          || (operator(g) && resource.data.role != 'owner'
+            && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['role'])
+            && request.resource.data.role in ['admin', 'member']);
+        allow delete: if (self(uid) || operator(g)) && resource.data.role != 'owner';
+      }
+      match /joinRequests/{uid} {
+        allow read: if self(uid) || operator(g);
+        allow create: if self(uid) && requestSchema(request.resource.data, uid, g)
+          && !member(g) && request.resource.data.status == 'pending'
+          && request.resource.data.requestedAt == request.time
+          && request.resource.data.reviewedAt == null && request.resource.data.reviewedBy == null
+          && validInvite(g, request.resource.data.inviteId);
+        allow update: if requestSchema(request.resource.data, uid, g) && (
+          (self(uid) && !member(g) && resource.data.status in ['rejected', 'approved']
+            && request.resource.data.status == 'pending' && request.resource.data.requestedAt == request.time
+            && request.resource.data.reviewedAt == null && request.resource.data.reviewedBy == null
+            && validInvite(g, request.resource.data.inviteId))
+          || (operator(g) && resource.data.status == 'pending'
+            && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'reviewedAt', 'reviewedBy'])
+            && request.resource.data.reviewedBy == request.auth.uid && request.resource.data.reviewedAt == request.time
+            && ((request.resource.data.status == 'approved'
+              && !exists(/databases/$(database)/documents/groups/$(g)/memberships/$(uid))
+              && getAfter(/databases/$(database)/documents/groups/$(g)/memberships/$(uid)).data.role == 'member')
+              || (request.resource.data.status == 'rejected'
+                && !existsAfter(/databases/$(database)/documents/groups/$(g)/memberships/$(uid))))));
+      }
+      match /invites/{i} {
+        allow read: if operator(g);
+        allow create, update: if operator(g)
+          && request.resource.data.keys().hasAll(['code', 'enabled', 'expiresAt', 'createdAt'])
+          && request.resource.data.keys().hasOnly(['code', 'enabled', 'expiresAt', 'createdAt'])
+          && request.resource.data.code.matches('^[A-Z0-9]{6,32}$')
+          && request.resource.data.enabled is bool
+          && (request.resource.data.expiresAt == null || request.resource.data.expiresAt is timestamp)
+          && ((!exists(/databases/$(database)/documents/groups/$(g)/invites/$(i)) && request.resource.data.createdAt == request.time)
+            || (request.resource.data.createdAt == resource.data.createdAt && request.resource.data.code == resource.data.code))
+          && getAfter(/databases/$(database)/documents/inviteCodes/$(request.resource.data.code)).data.groupId == g
+          && getAfter(/databases/$(database)/documents/inviteCodes/$(request.resource.data.code)).data.inviteId == i;
       }
     }
-    match /privatePreferences/{p} { allow read: if signed() && resource.data.ownerUid == request.auth.uid; }
-    match /notifications/{n} { allow read: if signed() && resource.data.ownerUid == request.auth.uid; }
-    match /config/learning { allow read: if signed(); }
-    // Includes private/meta, invites, serverRuns, datasets, models, all server writes.
-    match /{document=**} { allow read, write: if false; }
+    match /inviteCodes/{code} {
+      allow create: if request.resource.data.keys().hasAll(['groupId', 'inviteId'])
+        && request.resource.data.keys().hasOnly(['groupId', 'inviteId'])
+        && operator(request.resource.data.groupId) && code.matches('^[A-Z0-9]{6,32}$')
+        && getAfter(/databases/$(database)/documents/groups/$(request.resource.data.groupId)/invites/$(request.resource.data.inviteId)).data.code == code;
+      allow delete: if operator(resource.data.groupId)
+        && !getAfter(/databases/$(database)/documents/groups/$(resource.data.groupId)/invites/$(resource.data.inviteId)).data.enabled;
+    }
+    match /activities/{a} {
+      allow read: if member(resource.data.groupId);
+      allow create: if operator(request.resource.data.groupId) && validActivity(request.resource.data)
+        && request.resource.data.createdBy == request.auth.uid && request.resource.data.createdAt == request.time
+        && request.resource.data.updatedAt == request.time && request.resource.data.applicationCount == 0
+        && request.resource.data.responseVersion == 0 && request.resource.data.settingsVersion == 1
+        && request.resource.data.publicationVersion == 0 && request.resource.data.currentPublicationId == null
+        && request.resource.data.status == 'recruiting' && request.resource.data.deadline > request.time;
+      function publicationUpdate() {
+        return request.resource.data.diff(resource.data).affectedKeys()
+            .hasOnly(['currentPublicationId', 'publicationVersion', 'updatedAt'])
+          && operator(resource.data.groupId) && resource.data.status in ['closed', 'active']
+          && request.resource.data.updatedAt == request.time
+          && request.resource.data.publicationVersion == resource.data.publicationVersion + 1
+          && request.resource.data.currentPublicationId is string
+          && !exists(/databases/$(database)/documents/activities/$(a)/publications/$(request.resource.data.currentPublicationId))
+          && getAfter(/databases/$(database)/documents/activities/$(a)/publications/$(request.resource.data.currentPublicationId)).data.version == request.resource.data.publicationVersion;
+      }
+      function contentUpdate() {
+        return request.resource.data.diff(resource.data).affectedKeys().hasOnly(['title', 'description', 'goal',
+            'recruitmentCapacity', 'deadline', 'status', 'questions', 'matchingSettings', 'settingsVersion', 'updatedAt'])
+          && operator(resource.data.groupId) && validActivity(request.resource.data)
+          && request.resource.data.updatedAt == request.time
+          && (resource.data.applicationCount == 0 || request.resource.data.questions == resource.data.questions)
+          && ((request.resource.data.questions == resource.data.questions
+              && request.resource.data.matchingSettings == resource.data.matchingSettings
+              && request.resource.data.recruitmentCapacity == resource.data.recruitmentCapacity
+              && request.resource.data.settingsVersion == resource.data.settingsVersion)
+            || request.resource.data.settingsVersion == resource.data.settingsVersion + 1)
+          && (request.resource.data.status == resource.data.status
+            || (resource.data.status == 'recruiting' && request.resource.data.status == 'closed')
+            || (resource.data.status == 'closed' && request.resource.data.status == 'active' && resource.data.currentPublicationId != null)
+            || (resource.data.status == 'active' && request.resource.data.status == 'ended'));
+      }
+      allow update: if counterUpdate(a) || publicationUpdate() || contentUpdate();
+      match /applications/{uid} {
+        function valid(d) {
+          return d.keys().hasAll(['uid', 'groupId', 'status', 'answers', 'nicknameSnapshot', 'submittedAt', 'updatedAt'])
+            && d.keys().hasOnly(['uid', 'groupId', 'status', 'answers', 'nicknameSnapshot', 'submittedAt', 'updatedAt'])
+            && d.uid == uid && d.groupId == activity(a).groupId && text(d.nicknameSnapshot, 40)
+            && d.submittedAt is timestamp && d.updatedAt == request.time;
+        }
+        function open() {
+          return activity(a).status == 'recruiting' && request.time < activity(a).deadline
+            && activity(a).currentPublicationId == null && activity(a).publicationVersion == 0;
+        }
+        allow read: if member(activity(a).groupId) && (self(uid) || operator(activity(a).groupId));
+        allow create: if self(uid) && member(activity(a).groupId) && valid(request.resource.data) && open()
+          && request.resource.data.status == 'submitted' && request.resource.data.submittedAt == request.time
+          && answerValid(request.resource.data.answers, activity(a).questions) && applicationCounters(a, 1);
+        allow update: if self(uid) && member(activity(a).groupId) && valid(request.resource.data)
+          && request.resource.data.submittedAt == resource.data.submittedAt
+          && activity(a).currentPublicationId == null && activity(a).publicationVersion == 0
+          && ((request.resource.data.status == 'submitted' && open()
+            && answerValid(request.resource.data.answers, activity(a).questions)
+            && applicationCounters(a, resource.data.status == 'submitted' ? 0 : 1)
+            && (resource.data.status != 'submitted' || request.resource.data.answers != resource.data.answers))
+          || (resource.data.status == 'submitted' && request.resource.data.status == 'withdrawn'
+            && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'updatedAt'])
+            && applicationCounters(a, -1)));
+      }
+      match /drafts/{d} {
+        allow read: if operator(activity(a).groupId);
+        allow update: if operator(activity(a).groupId)
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['editedTeams', 'revision'])
+          && request.resource.data.editedTeams is list && request.resource.data.editedTeams.size() <= 100
+          && request.resource.data.revision == resource.data.revision + 1;
+      }
+      match /publications/{p} {
+        allow get: if member(activity(a).groupId) && activity(a).currentPublicationId == p
+          && (operator(activity(a).groupId) || activeBefore(a));
+        allow create: if operator(activity(a).groupId) && activity(a).status in ['closed', 'active']
+          && request.resource.data.keys().hasAll(['version', 'sourceDraftId', 'publishedBy', 'publishedAt', 'teams', 'displayProfiles'])
+          && request.resource.data.keys().hasOnly(['version', 'sourceDraftId', 'publishedBy', 'publishedAt', 'teams', 'displayProfiles'])
+          && request.resource.data.publishedBy == request.auth.uid && request.resource.data.publishedAt == request.time
+          && request.resource.data.version == activity(a).publicationVersion + 1
+          && activityAfter(a).currentPublicationId == p && activityAfter(a).publicationVersion == request.resource.data.version
+          && request.resource.data.teams is list && request.resource.data.teams.size() > 0 && request.resource.data.teams.size() <= 100
+          && request.resource.data.displayProfiles is map
+          && get(/databases/$(database)/documents/activities/$(a)/drafts/$(request.resource.data.sourceDraftId)).data.sourceResponseVersion == activity(a).responseVersion
+          && get(/databases/$(database)/documents/activities/$(a)/drafts/$(request.resource.data.sourceDraftId)).data.sourceSettingsVersion == activity(a).settingsVersion;
+      }
+    }
+    match /privatePreferences/{uid}/groups/{g} {
+      function target(t) {
+        return t is map && t.keys().hasAll(['targetUid', 'confirmed'])
+          && t.keys().hasOnly(['targetUid', 'confirmed']) && t.targetUid is string
+          && t.targetUid != uid && t.confirmed is bool
+          && exists(/databases/$(database)/documents/groups/$(g)/memberships/$(t.targetUid));
+      }
+      allow read, delete: if self(uid);
+      allow create, update: if self(uid) && member(g)
+        && request.resource.data.keys().hasAll(['authorUid', 'groupId', 'targets', 'updatedAt'])
+        && request.resource.data.keys().hasOnly(['authorUid', 'groupId', 'targets', 'updatedAt'])
+        && request.resource.data.authorUid == uid && request.resource.data.groupId == g
+        && request.resource.data.updatedAt == request.time && request.resource.data.targets is list
+        && request.resource.data.targets.size() <= 2
+        && (request.resource.data.targets.size() < 1 || target(request.resource.data.targets[0]))
+        && (request.resource.data.targets.size() < 2 || (target(request.resource.data.targets[1])
+          && request.resource.data.targets[0].targetUid != request.resource.data.targets[1].targetUid));
+    }
+    // Collection-group home queries MUST constrain uid == request.auth.uid.
+    match /{path=**}/memberships/{id} {
+      allow list: if signed() && resource.data.uid == request.auth.uid;
+    }
+    match /{path=**}/joinRequests/{id} {
+      allow list: if signed() && resource.data.uid == request.auth.uid;
+    }
   }
 }

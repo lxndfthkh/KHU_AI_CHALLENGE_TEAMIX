@@ -1,8 +1,18 @@
 {
   "indexes": [
-    {"collectionGroup":"privatePreferences","queryScope":"COLLECTION","fields":[{"fieldPath":"ownerUid","order":"ASCENDING"},{"fieldPath":"groupId","order":"ASCENDING"},{"fieldPath":"activityId","order":"ASCENDING"},{"fieldPath":"status","order":"ASCENDING"}]}
+    {"collectionGroup":"memberships","queryScope":"COLLECTION_GROUP","fields":[{"fieldPath":"uid","order":"ASCENDING"},{"fieldPath":"joinedAt","order":"DESCENDING"}]},
+    {"collectionGroup":"joinRequests","queryScope":"COLLECTION_GROUP","fields":[{"fieldPath":"uid","order":"ASCENDING"},{"fieldPath":"status","order":"ASCENDING"},{"fieldPath":"requestedAt","order":"DESCENDING"}]},
+    {"collectionGroup":"joinRequests","queryScope":"COLLECTION","fields":[{"fieldPath":"status","order":"ASCENDING"},{"fieldPath":"requestedAt","order":"ASCENDING"}]},
+    {"collectionGroup":"activities","queryScope":"COLLECTION","fields":[{"fieldPath":"groupId","order":"ASCENDING"},{"fieldPath":"createdAt","order":"DESCENDING"}]},
+    {"collectionGroup":"activities","queryScope":"COLLECTION","fields":[{"fieldPath":"groupId","order":"ASCENDING"},{"fieldPath":"status","order":"ASCENDING"},{"fieldPath":"createdAt","order":"DESCENDING"}]},
+    {"collectionGroup":"applications","queryScope":"COLLECTION","fields":[{"fieldPath":"status","order":"ASCENDING"},{"fieldPath":"submittedAt","order":"ASCENDING"}]}
   ],
   "fieldOverrides": [
-    {"collectionGroup":"members","fieldPath":"status","indexes":[{"order":"ASCENDING","queryScope":"COLLECTION"},{"order":"DESCENDING","queryScope":"COLLECTION"},{"order":"ASCENDING","queryScope":"COLLECTION_GROUP"}]}
+    {"collectionGroup":"applications","fieldPath":"answers","indexes":[]},
+    {"collectionGroup":"drafts","fieldPath":"enginePublic","indexes":[]},
+    {"collectionGroup":"drafts","fieldPath":"editedTeams","indexes":[]},
+    {"collectionGroup":"publications","fieldPath":"teams","indexes":[]},
+    {"collectionGroup":"publications","fieldPath":"displayProfiles","indexes":[]},
+    {"collectionGroup":"groups","fieldPath":"targets","indexes":[]}
   ]
 }
