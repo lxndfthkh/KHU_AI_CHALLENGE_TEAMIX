@@ -1,0 +1,40 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function signed() { return request.auth != null; }
+    function own(uid) { return signed() && request.auth.uid == uid; }
+    function active(g) { return signed() && exists(/databases/$(database)/documents/groups/$(g)/members/$(request.auth.uid)) && get(/databases/$(database)/documents/groups/$(g)/members/$(request.auth.uid)).data.status == 'active'; }
+    function officer(g) { return active(g) && get(/databases/$(database)/documents/groups/$(g)/members/$(request.auth.uid)).data.role == 'officer'; }
+    match /users/{uid} {
+      allow read: if own(uid);
+      // Account/consents initialization is callable-only; user may edit displayName only.
+      allow update: if own(uid) && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['displayName']) && request.resource.data.displayName is string && request.resource.data.displayName.size() > 0 && request.resource.data.displayName.size() <= 80;
+    }
+    match /groups/{g} {
+      allow read: if active(g);
+      match /members/{uid} { allow read: if active(g); }
+      match /activities/{a} {
+        allow read: if active(g);
+        match /questions/{q} { allow read: if active(g); }
+        match /applications/{uid} { allow read: if active(g) && (own(uid) || officer(g)); }
+        match /draft/{doc} { allow read: if officer(g); }
+        match /formationRuns/{r} { allow read: if officer(g); }
+        match /teamVersions/{v} {
+          allow read: if officer(g);
+          match /teams/{t} {
+            // Firestore cannot redact fields. Never leak officer-only reviewSummary.
+            // Stage 4 must place aggregates in a separate officer-only document before
+            // participants can read documents containing that field.
+            allow read: if officer(g) || (active(g) && request.auth.uid in resource.data.members && !('reviewSummary' in resource.data) && get(/databases/$(database)/documents/groups/$(g)/activities/$(a)).data.publishedVersionId == v);
+          }
+        }
+        match /reviews/{uid} { allow read: if own(uid); }
+      }
+    }
+    match /privatePreferences/{p} { allow read: if signed() && resource.data.ownerUid == request.auth.uid; }
+    match /notifications/{n} { allow read: if signed() && resource.data.ownerUid == request.auth.uid; }
+    match /config/learning { allow read: if signed(); }
+    // Includes private/meta, invites, serverRuns, datasets, models, all server writes.
+    match /{document=**} { allow read, write: if false; }
+  }
+}

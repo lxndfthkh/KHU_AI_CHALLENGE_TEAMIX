@@ -1,0 +1,7 @@
+{
+  "indexes": [
+    {"collectionGroup":"privatePreferences","queryScope":"COLLECTION","fields":[{"fieldPath":"ownerUid","order":"ASCENDING"},{"fieldPath":"groupId","order":"ASCENDING"},{"fieldPath":"activityId","order":"ASCENDING"},{"fieldPath":"status","order":"ASCENDING"}]},
+    {"collectionGroup":"members","queryScope":"COLLECTION_GROUP","fields":[{"fieldPath":"status","order":"ASCENDING"}]}
+  ],
+  "fieldOverrides": []
+}
