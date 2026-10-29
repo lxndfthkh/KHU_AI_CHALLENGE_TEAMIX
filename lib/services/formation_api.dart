@@ -4,7 +4,8 @@ import 'package:http/http.dart' as http;
 import '../data/feedback_learning_api.dart';
 
 /// Authenticated server_v3 API. Unlike demo /solve, never sends a raw roster.
-/// Read expected versions from /precheck before mutating; handle STALE explicitly.
+/// Read expected versions from /precheck before mutating; roster is an opaque token.
+/// Handle {status: STALE} explicitly.
 class FormationApi {
   FormationApi({required Uri baseUrl, FirebaseAuth? auth, http.Client? client})
       : _base = baseUrl, _auth = auth ?? FirebaseAuth.instance,
@@ -18,10 +19,12 @@ class FormationApi {
   final FirebaseAuth _auth;
   final http.Client _client;
   final bool _ownsClient;
-  static const _routes = {'precheck', 'run', 'draft/edit', 'publish', 'draft/discard', 'close', 'settings'};
+  // Same names as main's server command list (docs/FIRESTORE.md).
+  static const _routes = {'precheck', 'closeRecruitment', 'updateMatchingSettings',
+    'generateDraft', 'moveMember', 'discardDraft', 'publishTeams'};
   Future<Map<String, dynamic>> request(String route, {
     required String groupId, required String activityId,
-    Map<String, int>? expected, Map<String, dynamic> options = const {},
+    Map<String, Object>? expected, Map<String, dynamic> options = const {},
   }) async {
     if (!_routes.contains(route)) throw ArgumentError('지원하지 않는 작업입니다');
     final user = _auth.currentUser;
@@ -30,7 +33,7 @@ class FormationApi {
     final response = await _client.post(_base.resolve(route), headers: {
       'Content-Type': 'application/json', 'Authorization': 'Bearer $token',
     }, body: jsonEncode({...options, 'groupId': groupId, 'activityId': activityId,
-      if (expected != null) 'expected': expected,
+      'expected': ?expected,
     })).timeout(const Duration(seconds: 60));
     if (response.statusCode < 200 || response.statusCode >= 300) {
       // Never expose raw response bodies, which may contain private details.

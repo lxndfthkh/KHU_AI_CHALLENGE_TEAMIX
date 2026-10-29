@@ -357,7 +357,7 @@ class Spec13ServiceTests(unittest.TestCase):
         app = deepcopy(s['applications']['u0'])
         app['answers']['role']['value'] = role
         s['applications'][uid] = app
-        s['activity']['rosterVersion'] += 1
+        s['activity']['rosterVersion'] = f"{s['activity']['rosterVersion']}+{uid}"
 
     def publish_current_draft(self):
         return self.service.invoke('publish', 'operator', self.body())
@@ -464,6 +464,14 @@ class Spec13ServiceTests(unittest.TestCase):
                       'locks': {moved_team2[0]: {'type': 'manual', 'teamId': 'team_2'}}}
         with self.assertRaisesRegex(Invalid, '삭제할 팀의 수동 고정'):
             self.service.invoke('run', 'operator', self.body(kind='republish'))
+
+    def test_precheck_available_while_recruiting(self):
+        self.repo.state['activity']['state'] = 'recruiting'
+        check = self.service.invoke('precheck', 'operator', self.body())
+        self.assertIn('roster', check['versions'])
+        self.repo.state['activity']['state'] = 'ended'
+        with self.assertRaises(Invalid):
+            self.service.invoke('precheck', 'operator', self.body())
 
     def test_precheck_role_shortage(self):
         self.repo.state['activity']['extraRequirements'] = [

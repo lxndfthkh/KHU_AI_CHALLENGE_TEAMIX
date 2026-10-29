@@ -10,6 +10,8 @@ from validated_service import ValidatedFormationService
 from repository import FirestoreRepository
 
 bearer=HTTPBearer(auto_error=False)
+ROUTES={'/precheck':'precheck','/closeRecruitment':'close','/updateMatchingSettings':'settings',
+        '/generateDraft':'run','/moveMember':'edit','/discardDraft':'discard','/publishTeams':'publish'}
 
 def current_uid(credentials: HTTPAuthorizationCredentials=Depends(bearer)):
     if not credentials or credentials.scheme.lower() != 'bearer':
@@ -38,11 +40,12 @@ def create_app():
                 logging.error('Formation request failed')
                 raise HTTPException(500,'처리 중 오류가 발생했습니다') from None
         return endpoint
-    for route,action in [('/precheck','precheck'),('/run','run'),('/draft/edit','edit'),('/publish','publish'),('/draft/discard','discard'),('/close','close'),('/settings','settings')]:
+    # Route names follow main's server command list (docs/FIRESTORE.md).
+    for route,action in ROUTES.items():
         app.post(route)(handler(action))
     @app.post('/solve')
     def retired():
-        raise HTTPException(410,'/run을 사용해 주세요. 서버가 입력을 조회합니다')
+        raise HTTPException(410,'/generateDraft를 사용해 주세요. 서버가 입력을 조회합니다')
     @app.get('/health')
     def health(): return {'ok':True}
     return app

@@ -1,15 +1,16 @@
-"""실제 Firestore·Auth 에뮬레이터 검증 (편성알고리즘 v3 13-1 8번, 개발단계 가이드 3단계).
+"""실제 Firestore·Auth 에뮬레이터 검증: main 스키마(docs/FIRESTORE.md) 위에서 3단계 서버 명령.
 
-에뮬레이터가 없으면 건너뛴다. 실행:
-  cd algorithm && npx firebase emulators:exec --only firestore,auth --project demo-teamix-stage3 \
-    ".venv/bin/python -m unittest discover -s tests -p 'test_firestore_emulator.py' -v"
+에뮬레이터가 없으면 건너뛴다. 실행 (저장소 루트):
+  npx firebase emulators:exec --only firestore,auth --project demo-teamix-stage3 \
+    "cd algorithm && .venv/bin/python -m unittest discover -s tests -p 'test_firestore_emulator.py' -v"
 demo- 프로젝트 ID만 허용하므로 실제 Firebase 프로젝트에는 접근하지 않는다.
 """
 import json
 import os
 import unittest
 import urllib.request
-from datetime import datetime, timezone
+
+from test_main_adapter import main_docs
 
 EMULATED = bool(os.environ.get('FIRESTORE_EMULATOR_HOST') and os.environ.get('FIREBASE_AUTH_EMULATOR_HOST'))
 PROJECT = os.environ.get('GCLOUD_PROJECT') or os.environ.get('GOOGLE_CLOUD_PROJECT') or ''
@@ -27,29 +28,17 @@ class FirestoreEmulatorTests(unittest.TestCase):
         # 에뮬레이터 전용: firebase_admin.firestore.client()는 ADC를 요구하므로 자격 증명 없는 클라이언트를 쓴다.
         cls.auth, cls.db = auth, firestore.Client(project=PROJECT)
 
-    def setUp(self):
+    def seed(self, docs):
         host = os.environ['FIRESTORE_EMULATOR_HOST']
-        req = urllib.request.Request(f'http://{host}/emulator/v1/projects/{PROJECT}/databases/(default)/documents',
-                                     method='DELETE')
+        req = urllib.request.Request(f'http://{host}/emulator/v1/projects/{PROJECT}/databases/(default)/documents', method='DELETE')
         urllib.request.urlopen(req).close()
-        db = self.db
-        db.document('activities/a').set({
-            'groupId': 'g', 'title': 'demo', 'status': 'closed', 'responseVersion': 4, 'settingsVersion': 1,
-            'currentPublicationId': None, 'publicationVersion': 0,
-            'questions': {'selected': ['role', 'time', 'experience', 'interest'], 'roleOptions': ['dev', 'design'],
-                          'timeOptions': ['wed'], 'interestOptions': ['web']},
-            'matchingSettings': {'teamCount': 2, 'teamCapacities': [2, 2], 'method': 'balanced',
-                                 'priority': ['time', 'role', 'experience', 'interest', 'size'],
-                                 'requireCommonTime': False}})
-        db.document('groups/g/memberships/operator').set({'role': 'owner', 'nickname': 'O'})
-        for i in range(4):
-            db.document(f'groups/g/memberships/u{i}').set({'role': 'member', 'nickname': f'N{i}'})
-            db.document(f'activities/a/applications/u{i}').set({
-                'status': 'submitted', 'updatedAt': datetime(2026, 10, 30, tzinfo=timezone.utc),
-                'answers': {'role': 'dev' if i % 2 else 'design', 'time': ['wed'], 'experience': i + 1,
-                            'interest': ['web']}})
-        db.document('privatePreferences/u0/groups/g').set({
-            'groupId': 'g', 'authorUid': 'u0', 'targets': [{'targetUid': 'u1', 'confirmed': True}]})
+        for path, value in docs.items():
+            self.db.document(path).set(value)
+
+    def setUp(self):
+        docs = main_docs()
+        docs['placementPreferences/g_u0_u1'] = {'groupId': 'g', 'userId': 'u0', 'targetUserId': 'u1', 'active': True}
+        self.seed(docs)
 
     def service(self, solver=None):
         from repository import FirestoreRepository
@@ -57,24 +46,25 @@ class FirestoreEmulatorTests(unittest.TestCase):
         return ValidatedFormationService(FirestoreRepository(self.db), solver)
 
     def body(self, **patch):
+        versions = self.service().invoke('precheck', 'operator', {'groupId': 'g', 'activityId': 'a'})['versions']
         return {'groupId': 'g', 'activityId': 'a', 'kind': 'initial', 'limit': 2,
-                'expected': {'roster': 4, 'settings': 1, 'draft': 0}, **patch}
+                'expected': {k: versions[k] for k in ('roster', 'settings', 'draft')}, **patch}
 
-    def operator_visible(self):
-        docs = [d.to_dict() for d in self.db.collection('activities/a/formationRuns').stream()]
-        draft = self.db.document('activities/a/drafts/current').get()
-        return docs + ([draft.to_dict()] if draft.exists else [])
+    def get(self, path):
+        snap = self.db.document(path).get()
+        return snap.to_dict() if snap.exists else None
 
-    def test_run_writes_draft_and_keeps_private_values_server_only(self):
+    def test_generate_draft_writes_main_draft_and_keeps_private_values_server_only(self):
         response = self.service().invoke('run', 'operator', self.body())
         self.assertTrue(response['applied'], response)
-        draft = self.db.document('activities/a/drafts/current').get().to_dict()
-        self.assertEqual(sorted(draft['assignments']), ['u0', 'u1', 'u2', 'u3'])
-        self.assertNotEqual(draft['assignments']['u0'], draft['assignments']['u1'])
-        for doc in self.operator_visible() + [response]:
-            text = str(doc)
-            for word in ('J_int', 'private_preferences', 'targetUid', 'prefVersion'):
-                self.assertNotIn(word, text)
+        draft = self.get('drafts/a')
+        self.assertEqual((draft['activityId'], draft['groupId'], draft['status']), ('a', 'g', 'ready'))
+        team_of = {u: t['teamId'] for t in draft['teams'] for u in t['members']}
+        self.assertEqual(sorted(team_of), ['u0', 'u1', 'u2', 'u3'])
+        self.assertNotEqual(team_of['u0'], team_of['u1'])
+        shared = [response, draft] + [d.to_dict() for d in self.db.collection('formationRuns').stream()]
+        for word in ('J_int', 'private_preferences', 'targetUserId', 'targetUid'):
+            self.assertNotIn(word, str(shared))
         runs = [d.to_dict() for d in self.db.collection('serverRuns').stream()]
         self.assertEqual(len(runs), 1)
         self.assertIn('J_int', str(runs[0]['internal']))
@@ -85,39 +75,57 @@ class FirestoreEmulatorTests(unittest.TestCase):
 
         def solver(raw):
             result = solve(raw)
-            db.document('activities/a/applications/u0').update({'answers.experience': 5})
-            db.document('activities/a').update({'responseVersion': 5})
+            db.document('registrations/a_u0').update({'answers.experience': 5})
             return result
 
         response = self.service(solver).invoke('run', 'operator', self.body())
         self.assertEqual(response['status'], 'STALE')
         self.assertFalse(response['applied'])
-        self.assertFalse(db.document('activities/a/drafts/current').get().exists)
-        statuses = [d.to_dict()['status'] for d in db.collection('serverRuns').stream()]
-        self.assertEqual(statuses, ['STALE'])
+        self.assertIsNone(self.get('drafts/a'))
+        self.assertEqual([d.to_dict()['status'] for d in db.collection('serverRuns').stream()], ['STALE'])
 
-    def test_private_preference_change_during_solve_is_stale(self):
+    def test_preference_revoked_during_solve_is_stale(self):
         from formation import solve
         db = self.db
 
         def solver(raw):
             result = solve(raw)
-            db.document('privatePreferences/u0/groups/g').update({'targets': []})
+            db.document('placementPreferences/g_u0_u1').update({'active': False})
             return result
 
         response = self.service(solver).invoke('run', 'operator', self.body())
         self.assertEqual(response['status'], 'STALE')
-        self.assertFalse(db.document('activities/a/drafts/current').get().exists)
+        self.assertIsNone(self.get('drafts/a'))
 
-    def test_publish_after_run_in_real_transaction(self):
+    def test_close_recruitment_sets_team_ids_and_default_capacity(self):
+        docs = main_docs(n=5, target=2)
+        docs['activities/a']['status'] = 'recruiting'
+        settings = docs['activities/a/settings/matching']
+        del settings['teamIds'], settings['teamCapacities']
+        settings['capacityInitialized'] = False
+        self.seed(docs)
+        self.service().invoke('close', 'operator', self.body())
+        self.assertEqual(self.get('activities/a')['status'], 'closed')
+        s = self.get('activities/a/settings/matching')
+        self.assertEqual(s['teamIds'], ['team_1', 'team_2', 'team_3'])
+        self.assertEqual(s['teamCapacities'], {'team_1': 2, 'team_2': 2, 'team_3': 2})
+        self.assertTrue(s['capacityInitialized'])
+        self.assertEqual(s['settingsVersion'], 2)
+        self.assertEqual(s['enabledQuestionIds'], docs['activities/a/settings/matching']['enabledQuestionIds'])
+
+    def test_publish_teams_writes_publication_team_views_and_notifications(self):
         svc = self.service()
-        run = svc.invoke('run', 'operator', self.body())
-        self.assertTrue(run['applied'])
-        published = svc.invoke('publish', 'operator', self.body(expected={'roster': 4, 'settings': 1, 'draft': run['draftVersion']}))
-        activity = self.db.document('activities/a').get().to_dict()
-        self.assertEqual(activity['currentPublicationId'], published['publishedVersionId'])
-        pub = self.db.document(f"activities/a/publications/{published['publishedVersionId']}").get().to_dict()
-        self.assertEqual(sorted(u for t in pub['teams'] for u in t['participants']), ['u0', 'u1', 'u2', 'u3'])
+        self.assertTrue(svc.invoke('run', 'operator', self.body())['applied'])
+        published = svc.invoke('publish', 'operator', self.body())
+        self.assertEqual(published['seq'], 1)
+        self.assertEqual(self.get('activities/a')['publishedVersion'], 1)
+        pub = self.get('publications/a_v1')
+        self.assertEqual(sorted(m['uid'] for t in pub['teams'] for m in t['members']), ['u0', 'u1', 'u2', 'u3'])
+        for i in range(4):
+            view = self.get(f'teamViews/a_u{i}')
+            self.assertEqual((view['userId'], view['version'], view['groupId']), (f'u{i}', 1, 'g'))
+            self.assertEqual(self.get(f'notifications/a_v1_u{i}')['type'], 'teamPublished')
+        self.assertTrue(self.get('drafts/a')['discarded'])
 
     def id_token(self, uid):
         try:
@@ -130,22 +138,24 @@ class FirestoreEmulatorTests(unittest.TestCase):
         with urllib.request.urlopen(urllib.request.Request(url, data, {'Content-Type': 'application/json'})) as r:
             return json.load(r)['idToken']
 
-    def test_http_api_requires_valid_officer_token(self):
+    def test_http_commands_require_valid_admin_token(self):
         from fastapi.testclient import TestClient
         import server_v3
         app = server_v3.create_app()
         app.dependency_overrides[server_v3.get_service] = self.service
         client = TestClient(app)
-        self.assertEqual(client.post('/run', json=self.body()).status_code, 401)
-        self.assertEqual(client.post('/run', json=self.body(), headers={'Authorization': 'Bearer garbage'}).status_code, 401)
-        participant = client.post('/run', json=self.body(), headers={'Authorization': f'Bearer {self.id_token("u0")}'})
-        self.assertEqual(participant.status_code, 403)
-        officer = client.post('/run', json=self.body(), headers={'Authorization': f'Bearer {self.id_token("operator")}'})
-        self.assertEqual(officer.status_code, 200, officer.text)
-        self.assertTrue(officer.json()['applied'])
-        self.assertNotIn('J_int', officer.text)
-        stale = client.post('/run', json=self.body(), headers={'Authorization': f'Bearer {self.id_token("operator")}'})
-        self.assertEqual(stale.json(), {'status': 'STALE', 'applied': False})
+        body = self.body()
+        self.assertEqual(client.post('/generateDraft', json=body).status_code, 401)
+        self.assertEqual(client.post('/generateDraft', json=body, headers={'Authorization': 'Bearer garbage'}).status_code, 401)
+        member = client.post('/generateDraft', json=body, headers={'Authorization': f'Bearer {self.id_token("u0")}'})
+        self.assertEqual(member.status_code, 403)
+        admin = {'Authorization': f'Bearer {self.id_token("operator")}'}
+        ok = client.post('/generateDraft', json=body, headers=admin)
+        self.assertEqual(ok.status_code, 200, ok.text)
+        self.assertTrue(ok.json()['applied'])
+        self.assertNotIn('J_int', ok.text)
+        self.assertEqual(client.post('/generateDraft', json=body, headers=admin).json(), {'status': 'STALE', 'applied': False})
+        self.assertEqual(client.post('/run', json=body, headers=admin).status_code, 404)
 
 
 if __name__ == '__main__':

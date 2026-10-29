@@ -1,170 +1,286 @@
-"""Canonical main storage adapter. Legacy solver names exist only in memory.
-Reads precede buffered writes; no legacy members/activities/teamVersions are stored.
+"""main Firestore schema adapter (docs/FIRESTORE.md, firestore.schema.json).
+
+The formation service keeps its internal names (officer/applied/teamVersions);
+this module is the only place that knows main's storage layout:
+
+  memberships/{g}_{uid}                     role admin|member, status approved|...
+  activities/{a}                            status, targetTeamSize, publishedVersion
+  activities/{a}/settings/matching          admin-only engine contract (fields below)
+  activities/{a}/questions/{qid}            single|multiple|scale, options [{id,label}]
+  registrations/{a}_{uid}                   submitted|cancelled, answers keyed by qid
+  placementPreferences/{g}_{uid}_{target}   active; server-only input
+  drafts/{a}                                one working draft per activity (admin read)
+  publications/{a}_v{n}                     immutable publication (admin read)
+  teamViews/{a}_{uid}                       participant's own team
+  notifications/{a}_v{n}_{uid}              teamPublished | teamChanged
+  formationRuns/{run}, serverRuns/{run}     server-only (default-deny paths)
+
+settings/matching engine fields, added next to main's method/enabledQuestionIds:
+  questionCriteria {qid: role|time|experience|interest}, priority [criteria..., 'size'],
+  requireCommonTime, requiredRoles [{teamId, optionId, minimum}],
+  teamIds, teamCapacities {teamId: int|null}, capacityInitialized, settingsVersion.
+Reads precede buffered writes; Admin SDK bypasses rules, so the service checks roles.
 """
 from copy import deepcopy
 from datetime import datetime, timezone
-from firebase_admin import firestore
-from google.cloud.firestore_v1.base_query import FieldFilter
+import math
 from service import Missing, Invalid
 from formation import digest
 
+CRITERIA = {'role': 'single', 'time': 'multiple', 'interest': 'multiple', 'experience': 'scale'}
+STATE = {'recruiting': 'recruiting', 'active': 'in_progress', 'ended': 'ended', 'cancelled': 'cancelled'}
+STATUS = {'recruiting': 'recruiting', 'forming': 'closed', 'published': 'closed', 'in_progress': 'active', 'ended': 'ended'}
 
-def normalize(activity, runtime, members, applications):
-    q = activity['questions']
-    settings = activity['matchingSettings']
-    count = settings['teamCount']
-    tids = runtime.get('teamIds', [f'team_{i+1}' for i in range(count)])
-    if len(tids) != count or len(set(tids)) != count:
-        raise Invalid('서버 팀 ID와 설정이 일치하지 않습니다')
-    caps = settings['teamCapacities']
-    if len(caps) != count:
-        raise Invalid('팀 정원 설정을 확인해 주세요')
-    selected = q['selected']
-    questions = {key: {'id': key, 'key': key, 'questionVersion': activity['settingsVersion'],
-                 'scale': [1,2,3,4,5] if key == 'experience' else q[key+'Options']}
-                 for key in selected}
-    view = deepcopy(activity)
-    view.update(state={'recruiting':'recruiting','closed':'forming','active':'in_progress','ended':'ended'}[activity['status']],
-        rosterVersion=activity['responseVersion'], teamIds=tids,
-        capacity=dict(zip(tids, caps)), criteria=[{'key': k, 'priority':i+1} for i,k in enumerate(settings['priority'])],
-        formationMode=settings['method'], extraRequirements=deepcopy(runtime.get('extraRequirements', [])),
-        publishedVersionId=activity.get('currentPublicationId'), capacityInitialized=True)
-    if settings.get('requireCommonTime'):
-        view['extraRequirements'] = [r for r in view['extraRequirements'] if r['type'] != 'commonTime'] + [{'type':'commonTime'}]
-    view['extraRequirements'] += [{'type':'requiredRole', 'teamId':r['team'], 'role':r['role'], 'minimum':r['minimum']}
-        for r in settings.get('requiredRoles', [])]
-    normalized_apps = {}
-    for uid, app in applications.items():
-        normalized_apps[uid] = {**deepcopy(app), 'status':'applied' if app.get('status') == 'submitted' else app.get('status'),
-            'answerVersion':app.get('updatedAt'), 'answers':{key:{'questionVersion':activity['settingsVersion'], 'value':value}
-                for key,value in app.get('answers', {}).items()}}
-    normalized_members = {uid:{**m, 'sourceRole':m.get('role'),
-        'role':'officer' if m.get('role') in ('owner','admin') else 'participant',
-        'status':'active' if m.get('role') in ('owner','admin','member') else 'invalid'} for uid,m in members.items()}
-    return view, questions, normalized_members, normalized_apps
+
+def team_ids(settings, roster_size, target):
+    """Saved team IDs win; before closing, K = ceil(N / targetTeamSize)."""
+    if settings.get('teamIds'):
+        return list(settings['teamIds'])
+    if type(target) is not int or target < 1:
+        raise Invalid('팀당 목표 인원을 확인해 주세요')
+    return [f'team_{i+1}' for i in range(max(1, math.ceil(roster_size / target)))]
+
+
+def build_state(g, a, docs):
+    """Main documents -> internal service state. Pure; also used by memory tests."""
+    source = docs['activity']
+    if source is None or source.get('groupId') != g:
+        raise Missing()
+    settings = docs.get('settings') or {}
+    members = {}
+    for m in docs['memberships'].values():
+        if m.get('groupId') != g or not isinstance(m.get('userId'), str):
+            continue
+        members[m['userId']] = {'role': 'officer' if m.get('role') == 'admin' else 'participant',
+                                'status': 'active' if m.get('status') == 'approved' else m.get('status'),
+                                'displayName': m.get('displayName') or m['userId']}
+    registrations = {r['userId']: r for r in docs['registrations'].values()
+                     if r.get('activityId') == a and r.get('groupId') == g and isinstance(r.get('userId'), str)}
+    criteria_of = settings.get('questionCriteria', {})
+    questions = {}
+    for qid in settings.get('enabledQuestionIds', []):
+        q = docs['questions'].get(qid)
+        key = criteria_of.get(qid)
+        if q is None or not q.get('enabled', True) or key not in CRITERIA or q.get('type') != CRITERIA[key]:
+            raise Invalid('편성 기준 질문 설정을 확인해 주세요')
+        scale = [1, 2, 3, 4, 5] if key == 'experience' else [o['id'] for o in q.get('options', [])]
+        questions[qid] = {'id': qid, 'key': key, 'questionVersion': 1, 'scale': scale}
+    if len({q['key'] for q in questions.values()}) != len(questions):
+        raise Invalid('같은 편성 기준에 질문이 두 개 연결되어 있습니다')
+    applications = {uid: {'status': 'applied' if r.get('status') == 'submitted' else r.get('status'),
+                          'answerVersion': r.get('updatedAt'),
+                          'answers': {qid: {'questionVersion': 1, 'value': v} for qid, v in (r.get('answers') or {}).items()}}
+                    for uid, r in registrations.items()}
+    roster = [u for u, r in applications.items() if r['status'] == 'applied' and members.get(u, {}).get('status') == 'active']
+    tids = team_ids(settings, len(roster), source.get('targetTeamSize'))
+    caps = settings.get('teamCapacities') or {}
+    if set(caps) - set(tids):
+        raise Invalid('삭제된 팀 정원을 제거해 주세요')
+    priority = settings.get('priority') or [q['key'] for q in questions.values()] + ['size']
+    extra = [{'type': 'commonTime'}] if settings.get('requireCommonTime') else []
+    extra += [{'type': 'requiredRole', 'teamId': r['teamId'], 'role': r['optionId'], 'minimum': r['minimum']}
+              for r in settings.get('requiredRoles', [])]
+    version = source.get('publishedVersion')
+    status = source.get('status')
+    state = ('published' if version else 'forming') if status == 'closed' else STATE.get(status, status)
+    roster_token = digest(sorted((u, r['status'], str(r['answerVersion'])) for u, r in applications.items()))[:16]
+    activity = {'state': state, 'rosterVersion': roster_token, 'settingsVersion': settings.get('settingsVersion', 1),
+                'teamIds': tids, 'capacity': {t: caps.get(t) for t in tids},
+                'capacityInitialized': settings.get('capacityInitialized', False),
+                'criteria': [{'key': k, 'priority': i+1} for i, k in enumerate(priority)],
+                'formationMode': settings.get('method', 'balanced'), 'extraRequirements': extra,
+                'publishedVersionId': f'v{version}' if version else None}
+    publication = docs.get('publication') or {}
+    published = {m['uid']: t['teamId'] for t in publication.get('teams', []) for m in t.get('members', [])}
+    preferences = {}
+    for p in docs['preferences']:
+        if p.get('groupId') == g and p.get('active') is True and p.get('userId') != p.get('targetUserId'):
+            preferences[digest([p['userId'], p['targetUserId']])] = {
+                'ownerUid': p['userId'], 'targetUid': p['targetUserId'], 'status': 'active'}
+    notified = {v['userId']: {'peers': sorted(m['uid'] for m in v.get('members', []) if m['uid'] != v['userId'])}
+                for v in docs['teamViews'].values() if v.get('activityId') == a}
+    return {'activity': activity, 'members': members, 'questions': questions, 'applications': applications,
+            'draft': draft_from_doc(docs.get('draft') or {}), 'meta': {}, 'preferences': preferences,
+            'published': published, 'publishedMeta': {'seq': version or 0}, 'notified': notified}
+
+
+def draft_from_doc(d):
+    if not d:
+        return {}
+    out = {k: deepcopy(d[k]) for k in ('version', 'locks', 'discarded', 'sourceRunId', 'manuallyEdited') if k in d}
+    if 'basedOnPublishedVersion' in d:
+        out['basedOnPublishedVersionId'] = f"v{d['basedOnPublishedVersion']}" if d['basedOnPublishedVersion'] else None
+    if 'teams' in d:
+        out['assignments'] = {**{u: None for u in d.get('unassigned', [])},
+                              **{u: t['teamId'] for t in d['teams'] for u in t['members']}}
+    return out
+
+
+def draft_to_doc(g, a, d, team_order, stamp):
+    out = {'activityId': a, 'groupId': g, 'version': d.get('version', 0), 'status': 'ready',
+           'discarded': d.get('discarded', False), 'updatedAt': stamp}
+    if 'assignments' in d:
+        assignments = d['assignments']
+        order = list(team_order) + sorted({t for t in assignments.values() if t is not None} - set(team_order))
+        out['teams'] = [{'teamId': t, 'members': sorted(u for u, v in assignments.items() if v == t)} for t in order]
+        out['unassigned'] = sorted(u for u, v in assignments.items() if v is None)
+    for k in ('locks', 'sourceRunId', 'manuallyEdited'):
+        if k in d:
+            out[k] = deepcopy(d[k])
+    if 'requiredStatus' in d:
+        out['validation'] = {**deepcopy(d['requiredStatus']), 'summary': deepcopy(d.get('publicSummary', {}))}
+    if 'basedOnPublishedVersionId' in d:
+        v = d['basedOnPublishedVersionId']
+        out['basedOnPublishedVersion'] = int(v[1:]) if v else None
+    return out
+
+
+def settings_doc(patch, state):
+    s = {}
+    if 'teamIds' in patch or 'capacity' in patch:
+        s['teamIds'] = list(patch.get('teamIds') or patch.get('capacity') or state['activity']['teamIds'])
+    if 'capacity' in patch:
+        s['teamCapacities'] = dict(patch['capacity'])
+    if 'formationMode' in patch:
+        s['method'] = patch['formationMode']
+    if 'criteria' in patch:
+        order = [c['key'] for c in sorted(patch['criteria'], key=lambda c: c['priority'])]
+        if {k for k in order if k != 'size'} != {q['key'] for q in state['questions'].values()}:
+            raise Invalid('편성 기준 질문은 소모임을 만들 때만 정할 수 있습니다')
+        s['priority'] = order
+    if 'extraRequirements' in patch:
+        rules = patch['extraRequirements']
+        s['requireCommonTime'] = any(r['type'] == 'commonTime' for r in rules)
+        s['requiredRoles'] = [{'teamId': r['teamId'], 'optionId': r['role'], 'minimum': r['minimum']}
+                              for r in rules if r['type'] == 'requiredRole']
+    for k in ('capacityInitialized', 'settingsVersion'):
+        if k in patch:
+            s[k] = patch[k]
+    return s
+
+
+def publication_writes(g, a, state, publication, stamp):
+    """Publication + every participant's teamView + notifications for changed compositions only."""
+    n = publication['version']
+    out = [('set', f'publications/{a}_v{n}', publication, False)]
+    role_q = next((q['id'] for q in state['questions'].values() if q['key'] == 'role'), None)
+    seen = set()
+    for team in publication['teams']:
+        uids = [m['uid'] for m in team['members']]
+        members = [{**m, 'role': state['applications'].get(m['uid'], {}).get('answers', {}).get(role_q, {}).get('value')
+                    if role_q else None} for m in team['members']]
+        for uid in uids:
+            seen.add(uid)
+            old = state['notified'].get(uid)
+            changed = old is not None and old['peers'] != sorted(u for u in uids if u != uid)
+            out.append(('set', f'teamViews/{a}_{uid}', {
+                'activityId': a, 'groupId': g, 'userId': uid, 'version': n, 'teamId': team['teamId'],
+                'members': members, 'commonTimes': team.get('commonTimes', []),
+                'compositionChanged': changed, 'publishedAt': publication['publishedAt']}, False))
+            if old is None or changed:
+                out.append(('set', f'notifications/{a}_v{n}_{uid}', {
+                    'userId': uid, 'type': 'teamPublished' if old is None else 'teamChanged',
+                    'groupId': g, 'activityId': a, 'createdAt': stamp, 'readAt': None}, False))
+    out += [('delete', f'teamViews/{a}_{uid}', None, False) for uid in state['notified'] if uid not in seen]
+    return out
+
+
+def translate(g, a, state, pending, stamp):
+    """Internal buffered writes -> [(op, path, value, merge)] in main's layout."""
+    prefix = f'groups/{g}/activities/{a}'
+    out, publication, activity_patch, settings_patch = [], None, {}, {}
+    for path, value, merge in pending:
+        if path.startswith('serverRuns/'):
+            out.append(('set', path, value, merge))
+            continue
+        if not path.startswith(prefix):
+            continue  # internal notifications are rebuilt in main's shape by publication_writes
+        parts = [p for p in path[len(prefix):].split('/') if p]
+        if not parts:
+            if 'state' in value:
+                activity_patch['status'] = STATUS[value['state']]
+            settings_patch.update({k: v for k, v in value.items() if k not in ('state', 'publishedVersionId')})
+        elif parts[0] == 'teamVersions' and len(parts) == 2 and 'seq' in value:
+            publication = {'activityId': a, 'groupId': g, 'version': value['seq'], 'teams': [],
+                           'publishedBy': value['publishedBy'], 'publishedAt': value['publishedAt'],
+                           'sourceRunId': value.get('sourceRunId'), 'manuallyEdited': value.get('manuallyEdited', False)}
+            activity_patch['publishedVersion'] = value['seq']
+        elif parts[0] == 'teamVersions' and len(parts) == 4:
+            publication['teams'].append({'teamId': parts[3], 'members': [
+                {'uid': u, 'displayName': state['members'].get(u, {}).get('displayName', u)} for u in value['members']],
+                **value.get('publicMetrics', {}), 'losses': value.get('losses')})
+        elif parts[0] == 'draft':
+            out.append(('set', f'drafts/{a}', draft_to_doc(g, a, value, state['activity']['teamIds'], stamp), False))
+        elif parts[0] == 'draftHistory':
+            out.append(('set', f'drafts/{a}/history/{parts[1]}',
+                        draft_to_doc(g, a, value, state['activity']['teamIds'], stamp), False))
+        elif parts[0] == 'formationRuns':
+            out.append(('set', f'formationRuns/{parts[1]}', {**value, 'activityId': a, 'groupId': g}, merge))
+    if settings_patch:
+        out.append(('set', f'activities/{a}/settings/matching', {**settings_doc(settings_patch, state), 'updatedAt': stamp}, True))
+    if publication:
+        out += publication_writes(g, a, state, publication, stamp)
+    if activity_patch:
+        out.append(('set', f'activities/{a}', {**activity_patch, 'updatedAt': stamp}, True))
+    return out
 
 
 class Transaction:
     def __init__(self, db, transaction):
         self.db, self.tx = db, transaction
-        self.pending = []
-        self.context = {}
+        self.pending, self.loaded = [], None
+
     def one(self, path):
         snap = self.db.document(path).get(transaction=self.tx)
         return snap.to_dict() if snap.exists else None
-    def many(self, path):
-        return {d.id:d.to_dict() for d in self.db.collection(path).stream(transaction=self.tx)}
+
+    def where(self, collection, **equal):
+        from google.cloud.firestore_v1.base_query import FieldFilter
+        query = self.db.collection(collection)
+        for field, value in equal.items():
+            query = query.where(filter=FieldFilter(field, '==', value))
+        return {d.id: d.to_dict() for d in query.stream(transaction=self.tx)}
+
     def load(self, g, a):
-        base = f'activities/{a}'
-        source = self.one(base)
-        if source is None or source.get('groupId') != g:
+        activity = self.one(f'activities/{a}')
+        if activity is None or activity.get('groupId') != g:
             raise Missing()
-        runtime = self.one(base+'/private/runtime') or {}
-        members = self.many(f'groups/{g}/memberships')
-        applications = self.many(base+'/applications')
-        activity, questions, members, apps = normalize(source, runtime, members, applications)
-        version = source.get('currentPublicationId')
-        publication = self.one(base+'/publications/'+version) if version else {}
-        publication = publication or {}
-        published = {uid:team['team_id'] for team in publication.get('teams', [])
-                     for uid in team.get('participants', [])}
-        query = self.db.collection_group('groups').where(filter=FieldFilter('groupId','==',g))
-        preferences = {}
-        for d in query.stream(transaction=self.tx):
-            parts = d.reference.path.split('/')
-            if len(parts) != 4 or parts[0] != 'privatePreferences' or parts[2] != 'groups' or parts[3] != g:
-                continue
-            data = d.to_dict()
-            if data.get('authorUid') != parts[1]:
-                continue
-            for t in data.get('targets', []):
-                if t.get('confirmed') is True:
-                    key = digest([parts[1],t['targetUid']])
-                    preferences[key] = {'ownerUid':parts[1], 'targetUid':t['targetUid'], 'status':'active'}
-        draft = self.one(base+'/drafts/current') or {}
-        if draft.get('revision',0) > draft.get('version',0):
-            raise Invalid('기존 클라이언트가 수정한 초안입니다. 서버에서 재편성 후 검토해 주세요')
-        self.context[base] = {'source':source,'runtime':runtime,'members':members,'applications':applications,
-                              'publication':publication}
-        return {'activity':activity,'members':members,'questions':questions,'applications':apps,
-            'draft':draft, 'meta':{}, 'preferences':preferences,
-            'published':published, 'publishedMeta':{'seq':publication.get('version',0)},
-            'notified':self.many(base+'/lastNotified')}
+        version = activity.get('publishedVersion')
+        docs = {'activity': activity, 'settings': self.one(f'activities/{a}/settings/matching'),
+                'questions': {d.id: d.to_dict() for d in self.db.collection(f'activities/{a}/questions').stream(transaction=self.tx)},
+                'memberships': self.where('memberships', groupId=g),
+                'registrations': self.where('registrations', activityId=a),
+                'draft': self.one(f'drafts/{a}'),
+                'publication': self.one(f'publications/{a}_v{version}') if version else None,
+                'preferences': list(self.where('placementPreferences', groupId=g, active=True).values()),
+                'teamViews': self.where('teamViews', activityId=a)}
+        self.loaded = (g, a, build_state(g, a, docs))
+        return deepcopy(self.loaded[2])
+
     def set(self, path, value, merge=False):
-        if path.startswith('groups/') and '/activities/' in path:
-            path = 'activities/'+path.split('/activities/',1)[1]
-        self.pending.append((path,deepcopy(value),merge))
+        self.pending.append((path, deepcopy(value), merge))
+
     def flush(self):
-        publications = {}
-        for path,value,merge in self.pending:
-            if path.startswith('activities/'):
-                parts = path.split('/')
-                base = '/'.join(parts[:2])
-                ctx = self.context[base]
-                if len(parts) == 2:
-                    source = ctx['source']
-                    patch = {'updatedAt':datetime.now(timezone.utc)}
-                    runtime = {}
-                    if 'state' in value:
-                        patch['status'] = {'forming':'closed','published':'closed','in_progress':'active','recruiting':'recruiting','ended':'ended'}[value['state']]
-                    if 'publishedVersionId' in value:
-                        patch['currentPublicationId'] = value['publishedVersionId']
-                        patch['publicationVersion'] = source['publicationVersion']+1
-                    if 'settingsVersion' in value: patch['settingsVersion'] = value['settingsVersion']
-                    ms = deepcopy(source['matchingSettings'])
-                    if 'teamIds' in value:
-                        runtime['teamIds'] = value['teamIds']; ms['teamCount'] = len(value['teamIds'])
-                    tids = value.get('teamIds',ctx['runtime'].get('teamIds',[f'team_{i+1}' for i in range(ms['teamCount'])]))
-                    if 'capacity' in value: ms['teamCapacities'] = [value['capacity'][t] for t in tids]
-                    if 'criteria' in value:
-                        ms['priority'] = [c['key'] for c in sorted(value['criteria'],key=lambda c:c['priority'])]
-                        if {k for k in ms['priority'] if k != 'size'} != set(source['questions']['selected']):
-                            raise Invalid('질문 선택 변경은 모집 단계에서만 가능합니다')
-                    if 'formationMode' in value: ms['method'] = value['formationMode']
-                    if 'extraRequirements' in value:
-                        ms['requireCommonTime'] = any(r['type']=='commonTime' for r in value['extraRequirements'])
-                        ms['requiredRoles'] = [{'team':r['teamId'],'role':r['role'],'minimum':r['minimum']}
-                                              for r in value['extraRequirements'] if r['type']=='requiredRole']
-                        runtime['extraRequirements'] = []
-                    if any(k in value for k in ('teamIds','capacity','criteria','formationMode','extraRequirements')):
-                        patch['matchingSettings'] = ms
-                    self.tx.set(self.db.document(base),patch,merge=True)
-                    if runtime: self.tx.set(self.db.document(base+'/private/runtime'),runtime,merge=True)
-                    continue
-                if '/teamVersions/' in path:
-                    version = parts[3]
-                    pubpath = base+'/publications/'+version
-                    if len(parts) == 4:
-                        self.tx.set(self.db.document(base+'/publicationAudit/'+version),value,merge=True)
-                        if 'seq' not in value:
-                            continue
-                        publications[pubpath] = {'version':value['seq'],'sourceDraftId':'current',
-                            'publishedBy':value['publishedBy'],'publishedAt':value['publishedAt'],
-                            'teams':[], 'displayProfiles':{}}
-                    else:
-                        for uid in value['members']:
-                            publications[pubpath]['displayProfiles'][uid] = {'nickname':ctx['members'].get(uid,{}).get('nickname',uid)}
-                        publications[pubpath]['teams'].append({'team_id':parts[5],
-                            'participants':value['members'],**value.get('publicMetrics',{})})
-                    continue
-                path = path.replace('/draft/current','/drafts/current')
-                if '/drafts/current' in path:
-                    value['revision'] = value.get('version',0)
-                    value['sourceResponseVersion'] = ctx['source']['responseVersion']
-                    value['sourceSettingsVersion'] = ctx['source']['settingsVersion']
-                    value['editedTeams'] = [{'team_id':t,'participants':[u for u,v in value.get('assignments',{}).items() if v==t]}
-                        for t in sorted(set(v for v in value.get('assignments',{}).values() if v is not None))]
-            self.tx.set(self.db.document(path),value,merge=merge)
-        for path,value in publications.items():
-            self.tx.set(self.db.document(path),value)
+        if not self.pending:
+            return
+        g, a, state = self.loaded
+        for op, path, value, merge in translate(g, a, state, self.pending, datetime.now(timezone.utc)):
+            ref = self.db.document(path)
+            if op == 'delete':
+                self.tx.delete(ref)
+            else:
+                self.tx.set(ref, value, merge=merge)
 
 
 class FirestoreRepository:
     def __init__(self, db): self.db = db
+
     def atomic(self, callback):
+        from firebase_admin import firestore
+
         @firestore.transactional
         def execute(tx):
-            adapter = Transaction(self.db,tx)
+            adapter = Transaction(self.db, tx)
             result = callback(adapter)
             adapter.flush()
             return result

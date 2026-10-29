@@ -72,9 +72,17 @@
       "method": "balanced | similar",
       "enabledQuestionIds": "list",
       "weights": "map, algorithm contract TBD",
-      "updatedAt": "timestamp"
+      "updatedAt": "timestamp",
+      "questionCriteria": "map questionId -> role | time | experience | interest (role=single, time/interest=multiple, experience=scale 1..5)",
+      "priority": "list of criteria plus 'size', most important first; default = enabled criteria order + 'size'",
+      "requireCommonTime": "boolean, every team shares at least one time option",
+      "requiredRoles": "list of {teamId, optionId, minimum}",
+      "teamIds": "list, server-set at closeRecruitment (count = ceil(participants / targetTeamSize)); never recomputed afterwards",
+      "teamCapacities": "map teamId -> positive integer or null (no capacity); default ceil(N/K) set once at closeRecruitment",
+      "capacityInitialized": "boolean, server-maintained",
+      "settingsVersion": "integer, server-maintained; bumped on every settings change"
     },
-    "notes": "Admin-only read. Placement preferences are NOT copied here."
+    "notes": "Admin-only read. Placement preferences are NOT copied here. Engine fields are written by createActivity/updateMatchingSettings/closeRecruitment on the server."
   },
   "activityQuestions": {
     "path": "activities/{activityId}/questions/{questionId}",
@@ -102,18 +110,24 @@
     "notes": "Submit/edit/cancel through server transaction checking membership, deadline, status and capacity; retries must not increment count twice. Draft form is not a registration."
   },
   "drafts": {
-    "path": "drafts/{draftId}",
+    "path": "drafts/{activityId}",
     "fields": {
       "activityId": "id",
       "groupId": "id",
       "version": "integer",
       "teams": "list of team id and member UID list",
-      "validation": "non-sensitive validation map",
+      "validation": "non-sensitive map {valid, conflicts, summary: public per-team metrics}",
       "status": "generating | ready | failed",
       "createdAt": "timestamp",
-      "updatedAt": "timestamp"
+      "updatedAt": "timestamp",
+      "unassigned": "list of uid not yet in a team (manual edit)",
+      "locks": "map uid -> {teamId, type: manual | default}",
+      "discarded": "boolean",
+      "sourceRunId": "server run id or null",
+      "manuallyEdited": "boolean",
+      "basedOnPublishedVersion": "integer or null"
     },
-    "notes": "Admin only. No preference targets, counts, raw reasons, or revealing errors. Draft changes never mutate publications."
+    "notes": "Admin only. No preference targets, counts, raw reasons, or revealing errors. Draft changes never mutate publications. One working draft per activity; history in drafts/{activityId}/history/{runId}."
   },
   "publications": {
     "path": "publications/{activityId}_v{version}",
@@ -178,5 +192,14 @@
       "readAt": "timestamp or null"
     },
     "notes": "Owner read/mark read only. Server writes, idempotent operation IDs."
+  },
+  "formationRuns": {
+    "path": "formationRuns/{runId}",
+    "fields": {
+      "activityId": "id",
+      "groupId": "id",
+      "status": "OPTIMAL | FEASIBLE | INFEASIBLE | LIMIT_NO_CANDIDATE | STALE | ERROR"
+    },
+    "notes": "Server-only run log (default-deny). Public fields only; serverRuns/{runId} holds the full snapshot incl. private inputs, never client readable."
   }
 }

@@ -60,6 +60,31 @@ STALE 테스트는 메모리 저장소에서 명단/설정/초안/응답/선호/
 ### 코드 변경
 - 사전 검사(12-1)에 역할 희망자 부족, 선택 범위 남은 자리 부족 추가
 - 이동 0명 안내 문구를 명세 9-2 문장으로 변경
+- 사전 검사를 모집 중에도 허용 (읽기 전용, 마감 전에 버전 확인용)
+
+## main 스키마 호환 (docs/FIRESTORE.md, a20a15e)
+저장 어댑터 `repository.py`만 main 구조로 바꿨다. 엔진·서비스 판단 로직은 그대로이며 13-1 테스트가 같은 내용을 검증한다.
+
+| 내부 | main 저장 위치 |
+|---|---|
+| 임원진/참가원 | `memberships/{g}_{uid}` role admin/member, status approved |
+| 신청·응답 | `registrations/{a}_{uid}` submitted/cancelled, answers는 질문 ID 키 |
+| 질문 | `activities/{a}/questions/{qid}` single/multiple/scale, options.id |
+| 편성 설정 | `activities/{a}/settings/matching` (아래 추가 필드) |
+| 비공개 선호 | `placementPreferences/{g}_{uid}_{target}` active |
+| 작업 초안 | `drafts/{a}` teams, unassigned, locks, validation / 이력 `drafts/{a}/history/{runId}` |
+| 공개 | `publications/{a}_v{n}`, `activities/{a}.publishedVersion` |
+| 내 팀 | `teamViews/{a}_{uid}` (탈퇴자 보기는 삭제), compositionChanged |
+| 알림 | `notifications/{a}_v{n}_{uid}` teamPublished / 팀원 구성이 바뀐 사람만 teamChanged |
+| 실행 기록 | `formationRuns/{run}`(공개 값), `serverRuns/{run}`(비공개 포함) — 둘 다 규칙상 클라이언트 접근 불가 |
+
+`settings/matching` 추가 필드(`firestore.schema.json`에 반영): `questionCriteria`, `priority`, `requireCommonTime`, `requiredRoles`, `teamIds`, `teamCapacities`, `capacityInitialized`, `settingsVersion`. main의 `method`, `enabledQuestionIds`는 그대로 쓰고 `weights`는 건드리지 않는다.
+
+팀 수: main은 팀 수 대신 `targetTeamSize`를 받으므로 마감 시 `K = ceil(참가자 수 / targetTeamSize)`, 정원 기본값 `ceil(N/K)`(≤ targetTeamSize)를 한 번만 저장한다. 이후 자동 변경하지 않는다.
+
+roster 버전: main에는 정수 카운터가 없어 신청 문서(상태·updatedAt)로 만든 토큰을 쓴다. `/precheck`의 `versions`를 그대로 `expected`로 돌려보내면 된다.
+
+HTTP 명령 이름은 FIRESTORE.md 서버 명령과 같다: `/precheck`, `/closeRecruitment`, `/updateMatchingSettings`, `/generateDraft`, `/moveMember`, `/discardDraft`, `/publishTeams`.
 
 ### 실행
 ```bash
@@ -70,13 +95,16 @@ cd .. && npx firebase emulators:exec --only firestore,auth --project demo-teamix
 ```
 OR-Tools 9.14.6206은 Python 3.14 휠이 없으므로 3.11~3.12를 쓴다. Firestore 에뮬레이터는 Java가 필요하다.
 
-### 결과 (2026-10-30)
-- Python 83개 통과 (기존 45 + 13-1 33 + 에뮬레이터 5)
+### 결과 (2026-10-30, main a20a15e 병합 후)
+- Python 90개 통과 (엔진 14 + main 어댑터 13 + 경계 23 + 13-1 34 + 에뮬레이터 6)
 - 루트 Rules 테스트 `npm run test:rules` 24개 통과
 - `functions` 단위 테스트 14개 통과
+- Flutter `flutter analyze` 문제 없음, `flutter test` 26개 통과
 
 ## 남은 완료 조건
-- `functions/test/rules.test.cjs` 9개 중 5개 실패. 이번 변경 전 커밋(1f3467d)에서도 같은 5개가 실패한다. 원인: d0cee67에서 `firestore.rules`를 main 버전으로 바꿨지만 이 테스트는 1~2단계 설계의 경로·필드를 기대한다. 1~2단계 스키마(main 기준 vs 편성학습_v3 기준) 결정 후 정리 필요.
+- **main 자체 불일치:** main의 `firestore.rules`·`firestore.indexes.json`은 예전 중첩 구조(`groups/{g}/memberships`, `activities/{a}/applications`)이고, `FIRESTORE.md`·`firestore.schema.json`과 실제 배포된 규칙(a20a15e)은 평면 구조다. a2f1680 병합에서 규칙 파일이 예전 것으로 남은 것으로 보인다. 이 상태로 `firebase deploy --only firestore`를 하면 배포된 평면 규칙이 예전 규칙으로 덮인다. main 담당자와 확인 필요. 3단계 서버는 Admin SDK라 규칙과 무관하게 동작한다.
+- **1~2단계 functions가 예전 구조:** `functions/src/index.js`와 `lib/data/feedback_learning_api.dart`는 예전 중첩 경로를 쓴다. main 구조로 다시 만들어야 한다(FIRESTORE.md의 createGroup, requestJoin, approveJoin, submitRegistration, setPlacementPreference 등). `functions/test/rules.test.cjs` 9개 중 5개 실패도 같은 원인이며 1f3467d에서도 실패했다.
+- `createActivity`가 `settings/matching`의 `questionCriteria`·`priority`를 저장해야 편성이 가능하다(프론트·서버 명령 구현 시).
 - 소모임 단위 비공개 선호 저장/상태 제한/서버 전용 prefVersion 및 앱 계약 변경.
 - 개인 answerVersion과 응답 수정 시 버전 증가 규칙 정합성.
 - 앱의 초안/공개 직접 쓰기를 서버 경로로 전환한 후 Rules 강화 및 에뮬레이터 검증.

@@ -16,8 +16,8 @@ def path_id(value):
 
 def expected(s, e):
     v=versions(s)
-    if not isinstance(e,dict) or any(type(e.get(k)) is not int for k in ('roster','settings','draft')):
-        raise Invalid('expected.roster/settings/draft 정수가 필요합니다')
+    if not isinstance(e,dict) or type(e.get('roster')) not in (int,str) or any(type(e.get(k)) is not int for k in ('settings','draft')):
+        raise Invalid('expected.roster(정수 또는 토큰)/settings/draft 정수가 필요합니다')
     if any(e[k] != v[k] for k in ('roster','settings','draft')): raise Stale()
 
 
@@ -102,7 +102,7 @@ class FormationService:
         stamp=datetime.now(timezone.utc)
         if action == 'run': return self.run(uid,g,a,body,base,stamp)
         def work(tx):
-            s=self.state(tx,uid,g,a,forming=action != 'close')
+            s=self.state(tx,uid,g,a,forming=action not in ('close','precheck'))
             if action != 'precheck': expected(s,body.get('expected'))
             if action == 'settings':
                 patch=body.get('patch',{})
