@@ -13,6 +13,11 @@
     {"collectionGroup":"drafts","fieldPath":"editedTeams","indexes":[]},
     {"collectionGroup":"publications","fieldPath":"teams","indexes":[]},
     {"collectionGroup":"publications","fieldPath":"displayProfiles","indexes":[]},
-    {"collectionGroup":"groups","fieldPath":"targets","indexes":[]}
+    {"collectionGroup":"groups","fieldPath":"targets","indexes":[]},
+    {"collectionGroup":"memberships","fieldPath":"uid","indexes":[{"order":"ASCENDING","queryScope":"COLLECTION"},{"order":"DESCENDING","queryScope":"COLLECTION"},{"order":"ASCENDING","queryScope":"COLLECTION_GROUP"}]},
+    {"collectionGroup":"joinRequests","fieldPath":"uid","indexes":[{"order":"ASCENDING","queryScope":"COLLECTION"},{"order":"DESCENDING","queryScope":"COLLECTION"},{"order":"ASCENDING","queryScope":"COLLECTION_GROUP"}]},
+    {"collectionGroup":"groups","fieldPath":"groupId","indexes":[{"order":"ASCENDING","queryScope":"COLLECTION"},{"order":"DESCENDING","queryScope":"COLLECTION"},{"order":"ASCENDING","queryScope":"COLLECTION_GROUP"}]},
+    {"collectionGroup":"serverRuns","fieldPath":"snapshot","indexes":[]},
+    {"collectionGroup":"serverRuns","fieldPath":"internal","indexes":[]}
   ]
 }
