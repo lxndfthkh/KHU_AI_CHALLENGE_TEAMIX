@@ -13,7 +13,7 @@ String matchingNickname(String id) {
   final match = RegExp(r'^member_(\d{2})$').firstMatch(id);
   final index = match == null ? -1 : int.parse(match.group(1)!) - 1;
   return index >= 0 && index < _demoNicknames.length
-    ? _demoNicknames[index] : '가상 부원';
+    ? _demoNicknames[index] : '가상 참가원';
 }
 
 String matchingDisplayMessage(String message) => message.replaceAllMapped(
@@ -80,7 +80,7 @@ class MatchingResultScreen extends StatelessWidget {
           const Text('아직 확정·공개되지 않은 편성안이에요. 경험 수준은 자가 응답이에요.'),
           if (demo) const Padding(
             padding: EdgeInsets.only(top: 10),
-            child: Text('시연 결과: 가상 부원 20명·4팀의 고정 예시로, 변경한 설정을 계산한 결과가 아니에요.'),
+            child: Text('시연 결과: 가상 참가원 20명·4팀의 고정 예시로, 변경한 설정을 계산한 결과가 아니에요.'),
           ),
           const SizedBox(height: 20),
           for (var i = 0; i < result.teams.length; i++) _team(result.teams[i], i),

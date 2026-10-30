@@ -18,7 +18,7 @@ Future<(FakeFirebaseFirestore, String)> withRequests() async {
   final groupId = await createGroupInFirestore(
     db,
     uid: 'owner',
-    displayName: '운영진',
+    displayName: '임원진',
     name: '경희 메이커스',
     description: '함께 만들어요',
   );
@@ -46,7 +46,7 @@ void main() {
     expect(requests.first.requestedAt, DateTime(2026, 10, 30, 9));
   });
 
-  test('승인하면 부원으로 홈에 보이고, 거절하면 홈에서 사라진다', () async {
+  test('승인하면 참가원으로 홈에 보이고, 거절하면 홈에서 사라진다', () async {
     final (db, groupId) = await withRequests();
     await decideJoin(db, groupId: groupId, userId: 'first', approve: true);
     await decideJoin(db, groupId: groupId, userId: 'second', approve: false);
@@ -66,7 +66,7 @@ void main() {
       'first',
     ).watchMyGroups().first;
     expect(firstHome.single.name, '경희 메이커스');
-    expect(firstHome.single.roleLabel, '부원');
+    expect(firstHome.single.roleLabel, '참가원');
     expect(
       await FirestoreGroupsSource(db, 'second').watchMyGroups().first,
       isEmpty,
@@ -128,7 +128,7 @@ void main() {
     expect(find.text('처리하지 못했어요. 이미 처리된 요청일 수 있어요.'), findsOneWidget);
   });
 
-  testWidgets('운영진 모임 홈의 가입 요청 관리는 실제 목록을 연다', (tester) async {
+  testWidgets('임원진 모임 홈의 가입 요청 관리는 실제 목록을 연다', (tester) async {
     var opened = 0;
     await tester.pumpWidget(
       MaterialApp(

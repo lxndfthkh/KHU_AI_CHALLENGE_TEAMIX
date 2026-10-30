@@ -57,7 +57,6 @@ class GroupSummary {
 
   String get roleLabel {
     if (pending) return '승인 대기';
-    if (isOwner) return '대표자';
-    return role == 'admin' ? '운영진' : '부원';
+    return role == 'admin' ? '임원진' : '참가원';
   }
 }

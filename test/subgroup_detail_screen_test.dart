@@ -30,7 +30,7 @@ void main() {
       expect(find.text('팀 편성 관리 →'),
           isOperator ? findsOneWidget : findsNothing);
       expect(find.text(isOperator
-          ? '운영진도 신청하면 팀 편성에 참여할 수 있어요.'
+          ? '임원진도 신청하면 팀 편성에 포함돼요.'
           : '설문을 제출하면 참가 신청이 완료돼요.'), findsOneWidget);
       await tester.tap(find.text('참가 신청하기'));
       await tester.pump();

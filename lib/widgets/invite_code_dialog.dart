@@ -19,7 +19,7 @@ Future<void> showInviteCodeDialog(
     code = await issue();
   } catch (_) {
     messenger.showSnackBar(
-      const SnackBar(content: Text('초대 코드를 만들지 못했어요. 운영진만 발급할 수 있어요.')),
+      const SnackBar(content: Text('초대 코드를 만들지 못했어요. 임원진만 발급할 수 있어요.')),
     );
     return;
   }
@@ -68,7 +68,7 @@ class InviteCodeCard extends StatelessWidget {
       ),
       const SizedBox(height: 6),
       const Text(
-        '7일 동안 유효해요. 참여 요청은 운영진 승인 후 가입돼요.',
+        '7일 동안 유효해요. 참여 요청은 임원진 승인 후 가입돼요.',
         style: TextStyle(fontSize: 12, color: teamixMuted),
       ),
       const SizedBox(height: 12),

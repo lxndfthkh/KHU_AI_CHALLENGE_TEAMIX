@@ -250,9 +250,9 @@ class _EntryScreenState extends State<EntryScreen> {
           return;
         }
         notice = switch (status) {
-          'pending' => '이미 요청했어요. 운영진 승인을 기다려 주세요.',
+          'pending' => '이미 요청했어요. 임원진 승인을 기다려 주세요.',
           'approved' => '이미 가입한 모임이에요.',
-          _ => '이전 요청이 처리된 모임이에요. 운영진에게 문의해 주세요.',
+          _ => '이전 요청이 처리된 모임이에요. 임원진에게 문의해 주세요.',
         };
       }
     } catch (_) {
@@ -296,7 +296,7 @@ class _EntryScreenState extends State<EntryScreen> {
     if (!groupRepository.isValidInvite(value)) {
       notice = '초대가 만료되었거나 올바르지 않아요.';
     } else if (groupRepository.membershipStatus(group) == 'pending') {
-      notice = '이미 요청했어요. 운영진 승인을 기다려 주세요.';
+      notice = '이미 요청했어요. 임원진 승인을 기다려 주세요.';
     } else if (groupRepository.containsGroup(group)) {
       notice = '이미 가입한 모임이에요.';
     } else {

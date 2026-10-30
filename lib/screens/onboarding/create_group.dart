@@ -39,7 +39,7 @@ List<Widget> buildCreateGroupContent({
   ),
   if (categories.contains('기타')) ui.field('카테고리 직접 입력', other),
   ui.panel(butter, [
-    const Text('생성자는 승인 없이 대표자가 됩니다. 비공개 배치 선호 열람 권한은 포함되지 않습니다.'),
+    const Text('만든 사람은 승인 없이 임원진이 됩니다. 비공개 배치 선호 열람 권한은 포함되지 않습니다.'),
   ]),
   ui.button(demo ? '모임 만들기 · 시연' : '모임 만들기', onCreate),
   ui.button('취소', onCancel),

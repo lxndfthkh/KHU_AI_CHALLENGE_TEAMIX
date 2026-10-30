@@ -189,7 +189,7 @@ class SubgroupDetailScreen extends StatelessWidget {
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Row(children: [
-                          const Expanded(child: Text('운영진 관리',
+                          const Expanded(child: Text('임원진 관리',
                               style: TextStyle(fontSize: 12,
                                   fontWeight: FontWeight.w700,
                                   color: teamixPurpleAccent))),
@@ -247,7 +247,7 @@ class SubgroupDetailScreen extends StatelessWidget {
                 const SizedBox(height: 9),
                 Text(
                   isOperator
-                      ? '운영진도 신청하면 팀 편성에 참여할 수 있어요.'
+                      ? '임원진도 신청하면 팀 편성에 포함돼요.'
                       : '설문을 제출하면 참가 신청이 완료돼요.',
                   textAlign: TextAlign.center,
                   style: const TextStyle(fontSize: 11, color: teamixMuted),

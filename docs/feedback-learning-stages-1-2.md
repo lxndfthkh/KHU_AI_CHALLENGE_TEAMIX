@@ -5,7 +5,7 @@
 - **모임 만들기, 초대 코드 발급·확인, 가입 요청, 가입 승인·거절은 main 앱이 규칙 아래에서 직접 쓴다** (`lib/data/firestore_group_writer.dart`, `firestore_invitations.dart`, `firestore_join_requests.dart`). 서버에는 이 명령들이 없다(2026-10-30, main PR #15·#17에 맞춰 제거).
   - 초대: `invitations/{8자 코드}` (모임 이름·소개 포함, 7일 이내 만료, 목록 조회 불가)
   - 가입 요청: `memberships/{g}_{uid}` pending + `invitationId`(코드). 이미 문서가 있으면(가입·대기·거절·탈퇴) 다시 요청할 수 없다.
-  - 승인·거절: 그 모임 운영진이 status만 approved/rejected로 바꾼다. 알림은 아직 없다.
+  - 승인·거절: 그 모임 임원진이 status만 approved/rejected로 바꾼다. 알림은 아직 없다.
 - 규칙이 막아 두어 앱이 직접 쓸 수 없는 것만 서버 명령으로 남긴다.
 
 ## 남은 명령 (functions/src/commands.js, index.js가 callable로 노출)
@@ -32,6 +32,6 @@ cd functions && npm install
 npm test               # 검증 단위 테스트
 npm run test:emulator  # Firestore 에뮬레이터 명령 테스트 (Java 필요)
 ```
-에뮬레이터 테스트는 모임·초대·가입·승인을 **main 앱과 같은 방식(규칙 아래 앱 쓰기)**으로 만든 뒤, 그 데이터에서 서버 명령과 3·4단계가 끝까지 동작하는지 확인한다. 거절된 사람이 다시 요청할 수 없는 main 정책과, 운영진만 승인할 수 있는 규칙도 함께 확인한다.
+에뮬레이터 테스트는 모임·초대·가입·승인을 **main 앱과 같은 방식(규칙 아래 앱 쓰기)**으로 만든 뒤, 그 데이터에서 서버 명령과 3·4단계가 끝까지 동작하는지 확인한다. 거절된 사람이 다시 요청할 수 없는 main 정책과, 임원진만 승인할 수 있는 규칙도 함께 확인한다.
 
 배포하지 않았다.

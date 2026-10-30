@@ -98,7 +98,7 @@ test('모임은 승인된 회원만 읽고 클라이언트는 쓸 수 없다', a
   await assertFails(setDoc(ref(db('outsider'), 'groups/new'), { name: '새 모임' }));
 });
 
-test('멤버십: 본인 것, 운영진은 전체, 회원은 승인된 회원만 읽는다', async () => {
+test('멤버십: 본인 것, 임원진은 전체, 회원은 승인된 회원만 읽는다', async () => {
   await assertSucceeds(getDoc(ref(db('applicant'), 'memberships/g_applicant')));
   await assertSucceeds(getDoc(ref(db('admin'), 'memberships/g_applicant')));
   await assertSucceeds(getDoc(ref(db('member'), 'memberships/g_other')));
@@ -142,7 +142,7 @@ function createGroup(s, uid, { gid = 'n1', group = {}, member = {}, memberId } =
   return batch.commit();
 }
 
-test('모임 만들기: 모임과 본인 운영진 멤버십을 한 번에 만들면 허용된다', async () => {
+test('모임 만들기: 모임과 본인 임원진 멤버십을 한 번에 만들면 허용된다', async () => {
   const s = db('outsider');
   await assertSucceeds(createGroup(s, 'outsider'));
   await assertSucceeds(getDoc(ref(s, 'groups/n1')));
@@ -159,7 +159,7 @@ test('모임 만들기: 한쪽 문서만 만들거나 남의 이름으로 만들
   await assertFails(createGroup(anon(), 'outsider'));
 });
 
-test('모임 만들기: 이미 있는 모임의 운영진으로 자신을 넣을 수 없다', async () => {
+test('모임 만들기: 이미 있는 모임의 임원진으로 자신을 넣을 수 없다', async () => {
   const s = db('outsider');
   await assertFails(setDoc(ref(s, 'memberships/g_outsider'), creatorMembership('outsider', 'g')));
   await assertFails(createGroup(s, 'outsider', { gid: 'g' }));
@@ -190,21 +190,21 @@ test('멤버십은 클라이언트가 만들거나 역할을 올릴 수 없다',
 const decide = (uid, target, status, extra = {}) =>
   updateDoc(ref(db(uid), `memberships/g_${target}`), { status, updatedAt: serverTimestamp(), ...extra });
 
-test('가입 승인: 운영진이 대기 요청을 승인하면 정식 회원이 된다', async () => {
+test('가입 승인: 임원진이 대기 요청을 승인하면 정식 회원이 된다', async () => {
   await assertFails(getDoc(ref(db('applicant'), 'groups/g')));
   await assertSucceeds(decide('admin', 'applicant', 'approved'));
   await assertSucceeds(getDoc(ref(db('applicant'), 'groups/g')));
   await assertSucceeds(getDoc(ref(db('applicant'), 'activities/a')));
 });
 
-test('가입 거절: 운영진이 거절하면 모임을 계속 볼 수 없다', async () => {
+test('가입 거절: 임원진이 거절하면 모임을 계속 볼 수 없다', async () => {
   await assertSucceeds(decide('admin', 'applicant', 'rejected'));
   await assertFails(getDoc(ref(db('applicant'), 'groups/g')));
   // Already decided: no second decision.
   await assertFails(decide('admin', 'applicant', 'approved'));
 });
 
-test('가입 결정: 운영진이 아니거나 대기가 아니거나 다른 값을 바꾸면 거절된다', async () => {
+test('가입 결정: 임원진이 아니거나 대기가 아니거나 다른 값을 바꾸면 거절된다', async () => {
   await assertFails(decide('member', 'applicant', 'approved'));
   await assertFails(decide('applicant', 'applicant', 'approved'));
   await assertFails(decide('outsider', 'applicant', 'approved'));
@@ -220,7 +220,7 @@ test('가입 결정: 운영진이 아니거나 대기가 아니거나 다른 값
   await assertFails(decide('outsider', 'applicant', 'approved'));
 });
 
-test('가입 요청 목록: 운영진만 모임의 대기 요청을 조회한다', async () => {
+test('가입 요청 목록: 임원진만 모임의 대기 요청을 조회한다', async () => {
   const pending = (uid) => query(collection(db(uid), 'memberships'), where('groupId', '==', 'g'),
     where('status', '==', 'pending'), orderBy('createdAt'));
   assert.equal((await assertSucceeds(getDocs(pending('admin')))).size, 1);
@@ -232,7 +232,7 @@ const inSixDays = () => Timestamp.fromMillis(Date.now() + 6 * 864e5);
 const invitation = (extra = {}) => ({ groupId: 'g', groupName: '메이커스', description: '시연', active: true,
   expiresAt: inSixDays(), createdBy: 'admin', createdAt: serverTimestamp(), ...extra });
 
-test('초대 코드: 운영진만 모임 정보 그대로 7일 이내로 발급한다', async () => {
+test('초대 코드: 임원진만 모임 정보 그대로 7일 이내로 발급한다', async () => {
   await assertSucceeds(setDoc(ref(db('admin'), 'invitations/NEWC2345'), invitation()));
   await assertFails(setDoc(ref(db('member'), 'invitations/NEWC2346'), invitation({ createdBy: 'member' })));
   await assertFails(setDoc(ref(db('outsider'), 'invitations/NEWC2347'), invitation({ createdBy: 'outsider' })));
@@ -292,7 +292,7 @@ test('참여 요청 확인: 본인 멤버십만 모임별로 조회할 수 있�
   assert.equal((await assertSucceeds(getDocs(mine('outsider')))).size, 0);
 });
 
-test('소모임: 회원은 본문과 질문, 운영진만 편성 설정과 후기 집계를 읽는다', async () => {
+test('소모임: 회원은 본문과 질문, 임원진만 편성 설정과 후기 집계를 읽는다', async () => {
   await assertSucceeds(getDoc(ref(db('member'), 'activities/a')));
   await assertSucceeds(getDoc(ref(db('member'), 'activities/a/questions/q1')));
   await assertFails(getDoc(ref(db('member'), 'activities/a/settings/matching')));
@@ -305,7 +305,7 @@ test('소모임: 회원은 본문과 질문, 운영진만 편성 설정과 후�
   await assertFails(setDoc(ref(db('admin'), 'activities/a/questions/q2'), { type: 'time' }));
 });
 
-test('참가 신청: 본인과 운영진만 읽고 클라이언트는 쓸 수 없다', async () => {
+test('참가 신청: 본인과 임원진만 읽고 클라이언트는 쓸 수 없다', async () => {
   await assertSucceeds(getDoc(ref(db('member'), 'registrations/a_member')));
   await assertSucceeds(getDoc(ref(db('admin'), 'registrations/a_member')));
   await assertFails(getDoc(ref(db('other'), 'registrations/a_member')));
@@ -314,7 +314,7 @@ test('참가 신청: 본인과 운영진만 읽고 클라이언트는 쓸 수 �
   await assertFails(updateDoc(ref(db('member'), 'registrations/a_member'), { status: 'cancelled' }));
 });
 
-test('편성안과 공개 이력은 운영진만 읽는다', async () => {
+test('편성안과 공개 이력은 임원진만 읽는다', async () => {
   for (const path of ['drafts/d', 'publications/a_v1']) {
     await assertSucceeds(getDoc(ref(db('admin'), path)));
     await assertFails(getDoc(ref(db('member'), path)));
@@ -337,7 +337,7 @@ test('후기 원문은 작성자만 읽는다', async () => {
     userId: 'other', rating: 5 }));
 });
 
-test('배치 선호는 작성자만 읽고 운영진도 볼 수 없다', async () => {
+test('배치 선호는 작성자만 읽고 임원진도 볼 수 없다', async () => {
   await assertSucceeds(getDoc(ref(db('member'), 'placementPreferences/g_member_other')));
   await assertFails(getDoc(ref(db('admin'), 'placementPreferences/g_member_other')));
   await assertFails(getDoc(ref(db('other'), 'placementPreferences/g_member_other')));

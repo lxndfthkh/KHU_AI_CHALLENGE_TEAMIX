@@ -3,7 +3,7 @@ import 'package:flutter/material.dart';
 import '../data/firestore_join_requests.dart';
 import '../theme.dart';
 
-/// Operator screen for pending join requests (v7: 운영진 승인).
+/// Operator screen for pending join requests (v7: 임원진 승인).
 class JoinRequestsScreen extends StatefulWidget {
   const JoinRequestsScreen({
     super.key,

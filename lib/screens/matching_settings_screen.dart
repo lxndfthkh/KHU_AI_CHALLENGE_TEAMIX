@@ -174,7 +174,7 @@ class _MatchingSettingsScreenState extends State<MatchingSettingsScreen> {
                 Text('응답 현황 $_respondents/${source.participants.length}',
                   style: const TextStyle(fontSize: 22, fontWeight: FontWeight.w700, color: ink)),
                 const SizedBox(height: 8),
-                const Text('가상 부원 20명의 시연 데이터예요. 선택한 질문의 응답만 확인해요.'),
+                const Text('가상 참가원 20명의 시연 데이터예요. 선택한 질문의 응답만 확인해요.'),
               ],
             )),
             _section('팀 구성', Column(children: [

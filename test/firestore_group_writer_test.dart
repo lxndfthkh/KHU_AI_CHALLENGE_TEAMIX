@@ -4,7 +4,7 @@ import 'package:teamix/data/firestore_group_writer.dart';
 import 'package:teamix/data/firestore_groups_source.dart';
 
 void main() {
-  test('모임과 생성자 운영진 멤버십을 규칙이 요구하는 모양으로 만든다', () async {
+  test('모임과 생성자 임원진 멤버십을 규칙이 요구하는 모양으로 만든다', () async {
     final db = FakeFirebaseFirestore();
     final id = await createGroupInFirestore(
       db,
@@ -51,7 +51,7 @@ void main() {
     expect(membership['status'], 'approved');
   });
 
-  test('만든 모임은 바로 내 모임 홈에 대표자로 나타난다', () async {
+  test('만든 모임은 바로 내 모임 홈에 임원진으로 나타난다', () async {
     final db = FakeFirebaseFirestore();
     await createGroupInFirestore(
       db,
@@ -64,7 +64,7 @@ void main() {
     final groups = await FirestoreGroupsSource(db, 'me').watchMyGroups().first;
     expect(groups, hasLength(1));
     expect(groups.single.name, '새 모임');
-    expect(groups.single.roleLabel, '대표자');
+    expect(groups.single.roleLabel, '임원진');
     expect(groups.single.isOperator, isTrue);
   });
 }

@@ -49,7 +49,7 @@ STALE 테스트는 메모리 저장소에서 명단/설정/초안/응답/선호/
 | 21 오류 구분 | `test_15_and_21a_*`, `test_21b_solver_exception_blocks_candidate`, `test_21c_verifier_mismatch_blocks_candidate` |
 | 22 팀 수 변경 | `test_22_team_add_delete_keeps_ids`, `test_22b_*`, `test_22_deleted_team_moves_reported_and_locks_conflict` |
 
-추가: `b_q = 1` 가중치 ×10 동일 결과(`test_weights_times_ten_same_result`), 운영진이 읽는 기록·응답에 비공개 값 없음(`test_private_values_never_reach_operator_records`).
+추가: `b_q = 1` 가중치 ×10 동일 결과(`test_weights_times_ten_same_result`), 임원진이 읽는 기록·응답에 비공개 값 없음(`test_private_values_never_reach_operator_records`).
 
 ### 실제 에뮬레이터 검증 (`test_firestore_emulator.py`)
 - 실제 Firestore 트랜잭션으로 실행·초안 적용·공개
@@ -109,6 +109,6 @@ OR-Tools 9.14.6206은 Python 3.14 휠이 없으므로 3.11~3.12를 쓴다. Fires
 - 개인 answerVersion과 응답 수정 시 버전 증가 규칙 정합성.
 - 앱의 초안/공개 직접 쓰기를 서버 경로로 전환한 후 Rules 강화 및 에뮬레이터 검증.
 - Flutter 앱에서 인증된 편성 API 호출 통합 검증.
-- INFEASIBLE 시 운영진 안내는 일반 문구로만 제공한다(12-3의 구체 문장 변환은 미구현).
+- INFEASIBLE 시 임원진 안내는 일반 문구로만 제공한다(12-3의 구체 문장 변환은 미구현).
 
 배포하지 않았으며 운영 데이터 마이그레이션도 수행하지 않았다.

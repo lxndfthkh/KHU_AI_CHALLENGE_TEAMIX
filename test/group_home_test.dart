@@ -10,9 +10,9 @@ void main() {
     await tester.pumpWidget(const MyApp());
     await tester.tap(find.text('경희 메이커스'));
     await tester.pumpAndSettle();
-    expect(find.text('운영진'), findsOneWidget);
+    expect(find.text('임원진'), findsOneWidget);
     expect(find.text('가입 요청 관리'), findsOneWidget);
-    expect(find.text('부원 관리'), findsOneWidget);
+    expect(find.text('참가원 관리'), findsOneWidget);
     expect(find.byIcon(Icons.settings_outlined), findsNWidgets(2));
     expect(find.text('활동 후기'), findsNothing);
     expect(tester.takeException(), isNull);
@@ -30,7 +30,7 @@ void main() {
     final home = tester.widget<GroupHome>(find.byType(GroupHome));
     expect(home.palette, same(GroupCardPalette.joined[1]));
     final badge = find.ancestor(
-      of: find.text('부원'),
+      of: find.text('참가원'),
       matching: find.byType(Container),
     );
     final decoration =

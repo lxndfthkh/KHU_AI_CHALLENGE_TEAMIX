@@ -18,7 +18,7 @@ Future<(FakeFirebaseFirestore, String)> withGroup() async {
   final groupId = await createGroupInFirestore(
     db,
     uid: 'owner',
-    displayName: '운영진',
+    displayName: '임원진',
     name: '경희 메이커스',
     description: '함께 만들어요',
   );
@@ -33,7 +33,7 @@ void main() {
     }
   });
 
-  test('운영진이 발급한 코드에 모임 이름·소개와 7일 만료가 담긴다', () async {
+  test('임원진이 발급한 코드에 모임 이름·소개와 7일 만료가 담긴다', () async {
     final (db, groupId) = await withGroup();
     final code = await issueInvitation(db, uid: 'owner', groupId: groupId);
 
@@ -145,7 +145,7 @@ void main() {
     expect(home.single.name, GroupSummary.pendingName);
   });
 
-  testWidgets('운영진 모임 홈의 초대 공유는 발급한 코드를 보여준다', (tester) async {
+  testWidgets('임원진 모임 홈의 초대 공유는 발급한 코드를 보여준다', (tester) async {
     var issued = 0;
     await tester.pumpWidget(
       MaterialApp(

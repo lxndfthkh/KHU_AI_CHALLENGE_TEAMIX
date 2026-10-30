@@ -72,7 +72,7 @@ void main() {
 
     final walk = groups[0];
     expect(walk.name, '주말 산책 모임');
-    expect(walk.roleLabel, '부원');
+    expect(walk.roleLabel, '참가원');
     expect(walk.isOperator, isFalse);
     expect(walk.themeColor, 'peach');
     expect(walk.activityTitles, isEmpty);
@@ -86,7 +86,7 @@ void main() {
 
     final makers = groups[2];
     expect(makers.name, '경희 메이커스');
-    expect(makers.roleLabel, '대표자');
+    expect(makers.roleLabel, '임원진');
     expect(makers.isOperator, isTrue);
     expect(makers.activityTitles, ['새 모집', '중간 모집']);
   });
@@ -110,13 +110,13 @@ void main() {
     expect(emitted.last, ['secret', 'walk', 'makers']);
   });
 
-  test('대표자가 아닌 admin은 운영진으로 표시된다', () {
+  test('만든 사람이 아닌 admin도 임원진으로 표시된다', () {
     final summary = GroupSummary.fromFirestore(
       uid: 'me',
       membership: {'groupId': 'g', 'role': 'admin', 'status': 'approved'},
       group: {'name': '모임', 'ownerId': 'someone'},
     );
-    expect(summary.roleLabel, '운영진');
+    expect(summary.roleLabel, '임원진');
     expect(summary.isOperator, isTrue);
   });
 
@@ -157,8 +157,8 @@ void main() {
     expect(find.text('주말 산책 모임'), findsOneWidget);
     expect(find.text('새 모집'), findsOneWidget);
     expect(find.text('등록된 소모임이 없어요.'), findsNWidgets(2));
-    await tester.scrollUntilVisible(find.text('대표자'), 150);
-    expect(find.text('대표자'), findsOneWidget);
+    await tester.scrollUntilVisible(find.text('임원진'), 150);
+    expect(find.text('임원진'), findsOneWidget);
     expect(find.text(GroupSummary.pendingName), findsOneWidget);
     expect(tester.takeException(), isNull);
   });

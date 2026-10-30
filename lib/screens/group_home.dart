@@ -186,7 +186,7 @@ class GroupHome extends StatelessWidget {
                             borderRadius: BorderRadius.circular(12),
                           ),
                           child: Text(
-                            isOperator ? '운영진' : '부원',
+                            isOperator ? '임원진' : '참가원',
                             style: TextStyle(
                               fontSize: 10,
                               color: palette.accent,
@@ -214,8 +214,8 @@ class GroupHome extends StatelessWidget {
                   Expanded(
                     child: _Action(
                       icon: Icons.list,
-                      text: '부원 관리',
-                      onTap: () => _preview(context, '부원 관리'),
+                      text: '참가원 관리',
+                      onTap: () => _preview(context, '참가원 관리'),
                     ),
                   ),
                   const SizedBox(width: 8),
