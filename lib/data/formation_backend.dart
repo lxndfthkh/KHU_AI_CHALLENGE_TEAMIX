@@ -28,7 +28,18 @@ abstract interface class FormationBackend {
     String userId,
     String? teamId,
   );
-  Future<FormationOutcome> publish(String groupId, String activityId);
+
+  /// Roster, settings and draft versions as of now (팀편성흐름 v5 4장).
+  /// The review screen keeps the ones it showed and publishes with them.
+  Future<Map<String, Object>> reviewVersions(String groupId, String activityId);
+
+  /// Publishes only if nothing changed since [reviewed] was taken; the
+  /// server answers STALE otherwise.
+  Future<FormationOutcome> publish(
+    String groupId,
+    String activityId, {
+    required Map<String, Object> reviewed,
+  });
 
   // v4 ① settings (before publishing).
   Stream<FormationSettings?> settings(String activityId);
@@ -277,10 +288,38 @@ class ServerFormationBackend implements FormationBackend {
       });
 
   @override
-  Future<FormationOutcome> publish(String groupId, String activityId) =>
-      _guard(() async {
-        final r = await _mutate('publishTeams', groupId, activityId);
-        if (r['status'] == 'STALE') return _stale;
-        return const FormationOutcome(true, '팀을 공개했어요. 참가자에게 알림이 가요.');
-      });
+  Future<Map<String, Object>> reviewVersions(
+    String groupId,
+    String activityId,
+  ) async {
+    final r = await _api.request(
+      'precheck',
+      groupId: groupId,
+      activityId: activityId,
+    );
+    return Map<String, Object>.from(r['versions'] as Map);
+  }
+
+  /// Unlike [_mutate], sends the versions the operator reviewed rather than
+  /// fetching fresh ones, so a change after review can't slip through.
+  @override
+  Future<FormationOutcome> publish(
+    String groupId,
+    String activityId, {
+    required Map<String, Object> reviewed,
+  }) => _guard(() async {
+    final r = await _api.request(
+      'publishTeams',
+      groupId: groupId,
+      activityId: activityId,
+      expected: reviewed,
+    );
+    if (r['status'] == 'STALE') return reviewedStale;
+    return const FormationOutcome(true, '팀을 공개했어요. 참가자에게 알림이 가요.');
+  });
+
+  static const reviewedStale = FormationOutcome(
+    false,
+    '검토한 뒤에 신청·설정·초안이 바뀌어 공개하지 않았어요. 최신 초안을 확인한 뒤 다시 공개해 주세요.',
+  );
 }

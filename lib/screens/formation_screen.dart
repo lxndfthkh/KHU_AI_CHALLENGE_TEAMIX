@@ -55,6 +55,48 @@ class _FormationScreenState extends State<FormationScreen> {
   /// Teams picked for a partial re-formation after publishing.
   final _scope = <String>{};
 
+  /// Versions taken while showing draft [_reviewedDraft]; publishing sends
+  /// these, so a sign-up or edit after review makes the server refuse.
+  Map<String, Object>? _reviewed;
+  int? _reviewedDraft;
+
+  /// Takes the versions for the draft on screen, once per draft version.
+  void _review(FormationDraft draft) {
+    if (_reviewedDraft == draft.version) return;
+    _reviewedDraft = draft.version;
+    _reviewed = null;
+    final a = _activity;
+    if (a == null) return;
+    widget.backend
+        .reviewVersions(widget.groupId, a.id)
+        .then((v) {
+          // A newer draft already arrived: that one gets its own review.
+          if (!mounted || _reviewedDraft != draft.version) return;
+          if (v['draft'] == draft.version) {
+            setState(() => _reviewed = v);
+          } else {
+            _reviewedDraft = null; // Draft moved on; wait for it to show.
+          }
+        })
+        .catchError((Object _) {
+          if (mounted && _reviewedDraft == draft.version) _reviewedDraft = null;
+        });
+  }
+
+  Future<void> _publish(String activityId) async {
+    final reviewed = _reviewed;
+    if (reviewed == null) return;
+    await _run(
+      () => widget.backend.publish(
+        widget.groupId,
+        activityId,
+        reviewed: reviewed,
+      ),
+    );
+    // Whatever happened, the next publish needs a fresh review.
+    if (mounted) setState(() => _reviewedDraft = _reviewed = null);
+  }
+
   late final Map<String, String> _labels = {
     for (final q in widget.questions)
       for (final o in q.options) '${q.id}:${o.id}': o.label,
@@ -546,9 +588,9 @@ class _FormationScreenState extends State<FormationScreen> {
             ),
           ),
         FilledButton(
-          onPressed: _busy || !draft.valid
+          onPressed: _busy || !draft.valid || _reviewed == null
               ? null
-              : () => _run(() => widget.backend.publish(widget.groupId, a.id)),
+              : () => _publish(a.id),
           child: Text(a.published ? '바뀐 팀 다시 공개하기' : '팀 공개하기'),
         ),
         const SizedBox(height: 6),
@@ -597,21 +639,29 @@ class _FormationScreenState extends State<FormationScreen> {
                 constraints: const BoxConstraints(maxWidth: 520),
                 child: StreamBuilder<FormationDraft?>(
                   stream: _draft,
-                  builder: (context, snapshot) => ListView(
-                    padding: const EdgeInsets.fromLTRB(20, 8, 20, 28),
-                    children: [
-                      Text(
-                        '${a.title} · ${a.statusLabel}',
-                        style: const TextStyle(
-                          fontSize: 18,
-                          fontWeight: FontWeight.w800,
-                          color: ink,
+                  builder: (context, snapshot) {
+                    final draft = snapshot.data;
+                    if (draft != null && draft.usable) {
+                      WidgetsBinding.instance.addPostFrameCallback(
+                        (_) => _review(draft),
+                      );
+                    }
+                    return ListView(
+                      padding: const EdgeInsets.fromLTRB(20, 8, 20, 28),
+                      children: [
+                        Text(
+                          '${a.title} · ${a.statusLabel}',
+                          style: const TextStyle(
+                            fontSize: 18,
+                            fontWeight: FontWeight.w800,
+                            color: ink,
+                          ),
                         ),
-                      ),
-                      const SizedBox(height: 14),
-                      ..._body(a, snapshot.data),
-                    ],
-                  ),
+                        const SizedBox(height: 14),
+                        ..._body(a, snapshot.data),
+                      ],
+                    );
+                  },
                 ),
               ),
             ),
