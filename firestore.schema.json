@@ -66,7 +66,8 @@
       "startedAt": "timestamp or null, set by startActivity (closed+published -> active)",
       "endedAt": "timestamp or null, set by endActivity (active -> ended)",
       "endedVersion": "integer or null, publishedVersion at endActivity; feedback is linked to this version",
-      "feedbackClosedAt": "timestamp or null; feedback accepted only while status == ended and this is null. Set by closeFeedback or 7 days after endedAt"
+      "feedbackClosedAt": "timestamp or null; feedback accepted only while status == ended and this is null. Set by closeFeedback or 7 days after endedAt",
+      "type": "optional study | project | social | other (편성학습_v3 activityType feature; not collected yet -> null)"
     },
     "notes": "No teamCount input required at creation. No matching method or private constraints on this member-readable document."
   },
@@ -240,5 +241,13 @@
       "count": "integer"
     },
     "notes": "Server-only (default deny). Invitation code checks: 20 per 10 minutes per user."
+  },
+  "trainingDatasets": {
+    "path": "trainingDatasets/fx1, trainingDatasets/fx1/rows/{activityId}_v{n}_{teamId}, trainingDatasets/fx1/activities/{activityId}",
+    "fields": {
+      "rows": "one team of the ending publication: activityType, formationMode, teamCount, teamSize, active_* and loss_* per criterion (loss = publication losses / 1000), commonSlotCount, manuallyEdited, republishCount, y_overall/schedule/roles/rejoin, tagrate_{tag}_{neg|pos} (null if no tagged comment), n_reviews, n_comments, n_tagged, response_rate, activityId, teamVersion, teamId, sourceRefs (sha256 of feedback paths), extractorVersion fx1",
+      "activities": "re-extraction marker {extractedAt, rowIds, summaryUpdatedAt}"
+    },
+    "notes": "Server-only (default deny). Written by algorithm/learning/extract.py after feedback closes. No user IDs, answers, private preferences, internal scores or comment text. Included reviews: learningConsent and membershipRatio >= 0.5; rows need >= 2 included reviews and response rate >= 0.5."
   }
 }
