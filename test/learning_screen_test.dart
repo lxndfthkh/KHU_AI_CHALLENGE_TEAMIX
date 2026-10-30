@@ -99,7 +99,8 @@ class FakeFormation implements FormationBackend {
   final runs = <String>[];
 
   @override
-  Stream<FormationDraft?> draft(String activityId) => drafts.stream;
+  Stream<FormationDraft?> draft(String groupId, String activityId) =>
+      drafts.stream;
 
   @override
   Future<Map<String, String>> memberNames(String groupId) async => {
