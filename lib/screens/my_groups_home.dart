@@ -4,12 +4,14 @@ import '../data/activity_backend.dart';
 import '../data/formation_backend.dart';
 import '../data/group_admin.dart';
 import '../data/firestore_activities_source.dart';
+import '../data/firestore_pending_join.dart';
 import '../models/group_summary.dart';
 import '../theme.dart';
 import 'group_card_palette.dart';
 import 'group_home.dart';
 import 'join_requests_screen.dart';
 import 'members_screen.dart';
+import 'pending_join_screen.dart';
 
 class MyGroupsHome extends StatelessWidget {
   const MyGroupsHome({
@@ -26,6 +28,7 @@ class MyGroupsHome extends StatelessWidget {
     this.activitiesSource,
     this.activityBackend,
     this.formationBackend,
+    this.pendingJoins,
   });
 
   /// `null` while the first snapshot is loading.
@@ -48,6 +51,9 @@ class MyGroupsHome extends StatelessWidget {
 
   /// Formation server client for operators; null if not configured.
   final FormationBackend? formationBackend;
+
+  /// The caller's own join requests, for the pending screen; null in demo mode.
+  final PendingJoinSource? pendingJoins;
 
   void _add(BuildContext context) {
     showModalBottomSheet<void>(
@@ -313,9 +319,23 @@ class MyGroupsHome extends StatelessWidget {
       activities: group.activityTitles,
       roleLabel: group.roleLabel,
       pending: group.pending,
-      onTap: group.pending || busy ? null : () => _openGroup(context, group, palette),
+      onTap: busy
+          ? null
+          : group.pending
+          ? () => _openPending(context, group)
+          : () => _openGroup(context, group, palette),
     );
   }
+
+  void _openPending(BuildContext context, GroupSummary group) =>
+      Navigator.of(context).push<void>(
+        MaterialPageRoute<void>(
+          builder: (_) => PendingJoinScreen(
+            groupName: group.name,
+            request: pendingJoins?.watch(group.groupId),
+          ),
+        ),
+      );
 
   List<Widget> _groupList(BuildContext context) {
     final entries = groups;
@@ -520,7 +540,8 @@ class _GroupCard extends StatelessWidget {
                     Padding(
                       padding: const EdgeInsets.symmetric(vertical: 3),
                       child: Text(
-                        '등록된 소모임이 없어요.',
+                        // Pending members can't read activities yet.
+                        pending ? '승인되면 소모임을 볼 수 있어요.' : '등록된 소모임이 없어요.',
                         style: TextStyle(fontSize: 11, color: accent),
                       ),
                     ),
@@ -553,7 +574,7 @@ class _GroupCard extends StatelessWidget {
             Align(
               alignment: Alignment.centerRight,
               child: Text(
-                pending ? '승인을 기다리는 중' : '모임 들어가기 ↗',
+                pending ? '요청 상태 보기 ↗' : '모임 들어가기 ↗',
                 style: TextStyle(
                   fontSize: 11,
                   fontWeight: FontWeight.w600,
