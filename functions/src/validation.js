@@ -33,6 +33,10 @@ function question(q,order){
   return {id:qid,label:text(q.label,120),type:q.type,options,required:q.required!==false,order,enabled:q.enabled!==false};
 }
 
+// Same list as algorithm/learning/train.py TYPES (activityType feature).
+const ACTIVITY_TYPES=['study','project','social','other'];
+function activityType(v){if(v===undefined||v===null)return null;check(ACTIVITY_TYPES.includes(v),'Invalid activity type');return v;}
+
 function activity(d){
   check(plain(d),'Activity required');
   const questions=(()=>{check(Array.isArray(d.questions)&&d.questions.length<=20,'Up to 20 questions');return d.questions.map((q,i)=>question(q,i+1));})();
@@ -40,7 +44,7 @@ function activity(d){
   const deadline=typeof d.deadlineAt==='string'?Date.parse(d.deadlineAt):d.deadlineAt;
   check(Number.isSafeInteger(deadline)&&deadline>Date.now(),'Future deadline required');
   return {title:text(d.title,120),description:optionalText(d.description,5000),capacity:posInt(d.capacity,500),
-    targetTeamSize:posInt(d.targetTeamSize,50),deadlineAt:deadline,questions,matching:matching(d.matching,questions)};
+    targetTeamSize:posInt(d.targetTeamSize,50),deadlineAt:deadline,type:activityType(d.type),questions,matching:matching(d.matching,questions)};
 }
 
 function matching(m,questions){
@@ -105,4 +109,4 @@ function answers(input,questions){
 }
 
 const MAX_PREFERENCES=2;
-module.exports={ValidationError,check,plain,text,optionalText,id,noUnderscore,color,activity,matching,answers,MAX_PREFERENCES,CRITERIA,MAX_TRAITS,MAX_TRAIT_ITEMS};
+module.exports={ValidationError,check,plain,text,optionalText,id,noUnderscore,color,activity,matching,answers,MAX_PREFERENCES,CRITERIA,ACTIVITY_TYPES,MAX_TRAITS,MAX_TRAIT_ITEMS};

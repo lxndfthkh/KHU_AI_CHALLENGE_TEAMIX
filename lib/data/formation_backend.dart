@@ -29,6 +29,39 @@ abstract interface class FormationBackend {
     String? teamId,
   );
   Future<FormationOutcome> publish(String groupId, String activityId);
+
+  // v4 ① settings (before publishing).
+  Stream<FormationSettings?> settings(String activityId);
+
+  /// Whether learning is applied, and per-criterion up/down/same (never the
+  /// numbers behind them).
+  Future<(bool, Map<String, String>)> learning(
+    String groupId,
+    String activityId,
+  );
+  Future<FormationOutcome> saveSettings(
+    String groupId,
+    String activityId,
+    FormationSettingsPatch patch,
+  );
+
+  // v4 ③ review tools.
+  Future<FormationOutcome> setLocked(
+    String groupId,
+    String activityId,
+    String userId, {
+    required bool locked,
+  });
+
+  /// Re-forms only [teamIds] after publishing; others stay as they are.
+  Future<FormationOutcome> generatePartial(
+    String groupId,
+    String activityId,
+    List<String> teamIds,
+  );
+
+  /// Drops the post-publish edit draft; the published teams stay.
+  Future<FormationOutcome> discardDraft(String groupId, String activityId);
 }
 
 class ServerFormationBackend implements FormationBackend {
@@ -127,24 +160,26 @@ class ServerFormationBackend implements FormationBackend {
     final r = await _mutate('generateDraft', groupId, activityId, {
       'kind': republish ? 'republish' : 'initial',
     });
-    return switch (r['status']) {
-      'OPTIMAL' || 'FEASIBLE' => FormationOutcome(
-        true,
-        r['notice'] as String? ?? '추천 편성안을 만들었어요. 검토 후 공개해 주세요.',
-      ),
-      'STALE' => _stale,
-      'INFEASIBLE' => FormationOutcome(
-        false,
-        '조건을 모두 만족하는 편성이 없어요. '
-        '${[for (final c in (r['conflicts'] as List?) ?? const []) '$c'].join(', ')}',
-      ),
-      'LIMIT_NO_CANDIDATE' => const FormationOutcome(
-        false,
-        '시간 안에 편성안을 찾지 못했어요. 다시 시도하거나 직접 옮겨 편성해 주세요.',
-      ),
-      _ => const FormationOutcome(false, '편성 중 오류가 났어요. 기존 초안은 그대로예요.'),
-    };
+    return _runOutcome(r);
   });
+
+  FormationOutcome _runOutcome(Map<String, dynamic> r) => switch (r['status']) {
+    'OPTIMAL' || 'FEASIBLE' => FormationOutcome(
+      true,
+      r['notice'] as String? ?? '추천 편성안을 만들었어요. 검토 후 공개해 주세요.',
+    ),
+    'STALE' => _stale,
+    'INFEASIBLE' => FormationOutcome(
+      false,
+      '조건을 모두 만족하는 편성이 없어요. '
+      '${[for (final c in (r['conflicts'] as List?) ?? const []) '$c'].join(', ')}',
+    ),
+    'LIMIT_NO_CANDIDATE' => const FormationOutcome(
+      false,
+      '시간 안에 편성안을 찾지 못했어요. 다시 시도하거나 직접 옮겨 편성해 주세요.',
+    ),
+    _ => const FormationOutcome(false, '편성 중 오류가 났어요. 기존 초안은 그대로예요.'),
+  };
 
   @override
   Future<FormationOutcome> move(
@@ -164,6 +199,82 @@ class ServerFormationBackend implements FormationBackend {
     if (r['status'] == 'STALE') return _stale;
     return const FormationOutcome(true, '옮겼어요.');
   });
+
+  @override
+  Stream<FormationSettings?> settings(String activityId) => _db
+      .doc('activities/$activityId/settings/matching')
+      .snapshots()
+      .map((d) => d.exists ? FormationSettings.fromFirestore(d.data()!) : null);
+
+  @override
+  Future<(bool, Map<String, String>)> learning(
+    String groupId,
+    String activityId,
+  ) async {
+    final r = await _api.request(
+      'precheck',
+      groupId: groupId,
+      activityId: activityId,
+    );
+    final l = (r['learning'] as Map?) ?? const {};
+    return (
+      l['enabled'] != false,
+      {
+        for (final e in ((l['directions'] as Map?) ?? const {}).entries)
+          '${e.key}': '${e.value}',
+      },
+    );
+  }
+
+  @override
+  Future<FormationOutcome> saveSettings(
+    String groupId,
+    String activityId,
+    FormationSettingsPatch patch,
+  ) => _guard(() async {
+    final r = await _mutate('updateMatchingSettings', groupId, activityId, {
+      'patch': patch.toJson(),
+    });
+    if (r['status'] == 'STALE') return _stale;
+    return const FormationOutcome(true, '편성 설정을 저장했어요.');
+  });
+
+  @override
+  Future<FormationOutcome> setLocked(
+    String groupId,
+    String activityId,
+    String userId, {
+    required bool locked,
+  }) => _guard(() async {
+    final r = await _mutate('moveMember', groupId, activityId, {
+      'operations': [
+        {'type': locked ? 'lock' : 'unlock', 'uid': userId},
+      ],
+    });
+    if (r['status'] == 'STALE') return _stale;
+    return FormationOutcome(true, locked ? '이 팀에 고정했어요.' : '고정을 풀었어요.');
+  });
+
+  @override
+  Future<FormationOutcome> generatePartial(
+    String groupId,
+    String activityId,
+    List<String> teamIds,
+  ) => _guard(() async {
+    final r = await _mutate('generateDraft', groupId, activityId, {
+      'kind': 'partial',
+      'scopeTeamIds': teamIds,
+    });
+    return _runOutcome(r);
+  });
+
+  @override
+  Future<FormationOutcome> discardDraft(String groupId, String activityId) =>
+      _guard(() async {
+        final r = await _mutate('discardDraft', groupId, activityId);
+        if (r['status'] == 'STALE') return _stale;
+        return const FormationOutcome(true, '수정 초안을 버렸어요. 공개된 팀은 그대로예요.');
+      });
 
   @override
   Future<FormationOutcome> publish(String groupId, String activityId) =>

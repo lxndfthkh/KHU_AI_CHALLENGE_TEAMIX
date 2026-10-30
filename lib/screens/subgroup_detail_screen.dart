@@ -7,6 +7,7 @@ import '../data/formation_backend.dart';
 import '../models/activity.dart';
 import '../theme.dart';
 import '../widgets/my_team_card.dart';
+import 'activity_feedback_flow.dart';
 import 'formation_screen.dart';
 import 'group_card_palette.dart';
 import 'matching_settings_screen.dart';
@@ -25,6 +26,9 @@ class SubgroupDetailScreen extends StatelessWidget {
     this.onApply,
     this.onManageFormation,
     this.myTeam,
+    this.lifecycle,
+    this.feedbackAction,
+    this.onCancelRegistration,
   });
 
   final String groupName;
@@ -46,6 +50,15 @@ class SubgroupDetailScreen extends StatelessWidget {
 
   /// The participant's published team, if any.
   final Widget? myTeam;
+
+  /// Operator lifecycle panel (start, end, feedback summary).
+  final Widget? lifecycle;
+
+  /// Participant feedback entry once the activity ended.
+  final Widget? feedbackAction;
+
+  /// cancelRegistration; null when it's no longer allowed (after publish).
+  final VoidCallback? onCancelRegistration;
 
   Widget _applyButton(String label, VoidCallback? onPressed) => FilledButton(
     style: FilledButton.styleFrom(
@@ -276,7 +289,9 @@ class SubgroupDetailScreen extends StatelessWidget {
                   ),
                 ),
               ),
+              ?lifecycle,
               ?myTeam,
+              ?feedbackAction,
               if (isOperator) ...[
                 const SizedBox(height: 22),
                 Material(
@@ -371,13 +386,30 @@ class SubgroupDetailScreen extends StatelessWidget {
                       builder: (context, snapshot) {
                         final current = snapshot.data;
                         final submitted = current?.submitted ?? false;
-                        return _applyButton(
+                        final apply = _applyButton(
                           onApply == null
                               ? (submitted ? '신청 완료 · 모집 마감' : '모집이 마감됐어요')
                               : submitted
                               ? '신청 완료 · 응답 수정하기'
                               : '참가 신청하기',
                           onApply == null ? null : () => onApply!(current),
+                        );
+                        if (!submitted || onCancelRegistration == null) {
+                          return apply;
+                        }
+                        return Column(
+                          mainAxisSize: MainAxisSize.min,
+                          crossAxisAlignment: CrossAxisAlignment.stretch,
+                          children: [
+                            apply,
+                            TextButton(
+                              onPressed: onCancelRegistration,
+                              style: TextButton.styleFrom(
+                                foregroundColor: teamixAddForeground,
+                              ),
+                              child: const Text('신청 취소'),
+                            ),
+                          ],
                         );
                       },
                     ),
@@ -473,6 +505,30 @@ class _RealSubgroupDetailScreenState extends State<RealSubgroupDetailScreen> {
     ));
   }
 
+  Future<void> _cancel(ActivityBackend backend, ActivityRecord activity) async {
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (d) => AlertDialog(
+        title: const Text('신청을 취소할까요?'),
+        content: const Text('취소하면 이 소모임 팀 편성에서 빠져요. 모집 중이면 다시 신청할 수 있어요.'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(d, false), child: const Text('아니요')),
+          TextButton(onPressed: () => Navigator.pop(d, true), child: const Text('신청 취소')),
+        ],
+      ),
+    );
+    if (ok != true || !mounted) return;
+    final messenger = ScaffoldMessenger.of(context);
+    try {
+      await backend.cancelRegistration(activity.id);
+      messenger.showSnackBar(const SnackBar(content: Text('신청을 취소했어요.')));
+    } catch (_) {
+      messenger.showSnackBar(
+        const SnackBar(content: Text('취소하지 못했어요. 팀이 이미 공개됐을 수 있어요.')),
+      );
+    }
+  }
+
   Future<void> _manageFormation(ActivityBackend backend) async {
     final formation = widget.formationBackend;
     if (formation == null) {
@@ -531,17 +587,39 @@ class _RealSubgroupDetailScreenState extends State<RealSubgroupDetailScreen> {
         );
       }
       final backend = widget.activityBackend;
+      final current = activity!;
       return SubgroupDetailScreen(
         groupName: widget.groupName,
-        activity: activity,
+        activity: current,
         isOperator: widget.isOperator,
         registration: registration,
-        onApply: backend == null || !activity!.recruiting
+        onApply: backend == null || !current.recruiting
             ? null
-            : (current) => _apply(backend, activity, current),
+            : (registered) => _apply(backend, current, registered),
         onManageFormation: backend == null || !widget.isOperator
             ? null
             : () => _manageFormation(backend),
+        lifecycle: backend == null || !widget.isOperator
+            ? null
+            : ActivityLifecyclePanel(
+                backend: backend,
+                activity: current,
+                palette: widget.palette,
+              ),
+        feedbackAction: backend == null
+            ? null
+            : FeedbackAction(
+                backend: backend,
+                groupId: widget.groupId,
+                activity: current,
+                palette: widget.palette,
+              ),
+        onCancelRegistration:
+            backend == null ||
+                current.published ||
+                !(current.recruiting || current.status == 'closed')
+            ? null
+            : () => _cancel(backend, current),
         myTeam: backend == null
             ? null
             : MyTeamCard(

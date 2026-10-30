@@ -139,3 +139,116 @@ class FormationOutcome {
   final bool ok;
   final String message;
 }
+
+/// Korean labels for matching criteria (algorithm CRITERIA plus size).
+const criterionLabels = {
+  'role': '희망 역할',
+  'time': '가능 시간',
+  'experience': '경험 수준',
+  'interest': '관심 분야',
+  'size': '인원 균형',
+};
+
+/// `activities/{a}/settings/matching` (admin read), as repository.py writes it.
+class FormationSettings {
+  const FormationSettings({
+    this.teamIds = const [],
+    this.priority = const [],
+    this.method = 'balanced',
+    this.requireCommonTime = false,
+    this.requiredRoles = const [],
+    this.learningEnabled = true,
+    this.questionCriteria = const {},
+  });
+
+  factory FormationSettings.fromFirestore(Map<String, dynamic> d) =>
+      FormationSettings(
+        teamIds: [for (final t in (d['teamIds'] as List?) ?? const []) '$t'],
+        priority: [for (final p in (d['priority'] as List?) ?? const []) '$p'],
+        method: d['method'] as String? ?? 'balanced',
+        requireCommonTime: d['requireCommonTime'] == true,
+        requiredRoles: [
+          for (final r in (d['requiredRoles'] as List?) ?? const [])
+            if (r is Map)
+              (
+                '${r['teamId']}',
+                '${r['optionId']}',
+                (r['minimum'] as num?)?.toInt() ?? 1,
+              ),
+        ],
+        learningEnabled: d['learningEnabled'] != false,
+        questionCriteria: {
+          for (final e in ((d['questionCriteria'] as Map?) ?? const {}).entries)
+            '${e.key}': '${e.value}',
+        },
+      );
+
+  /// Empty before recruiting closes (teams are estimated then).
+  final List<String> teamIds;
+
+  /// Criteria keys in priority order, ending with or containing 'size'.
+  final List<String> priority;
+  final String method;
+  final bool requireCommonTime;
+
+  /// (teamId, role option ID, minimum).
+  final List<(String, String, int)> requiredRoles;
+  final bool learningEnabled;
+
+  /// questionId -> criterion.
+  final Map<String, String> questionCriteria;
+}
+
+/// What the operator chose on the settings screen; sent as the server's
+/// internal `updateMatchingSettings` patch.
+class FormationSettingsPatch {
+  const FormationSettingsPatch({
+    required this.teamCount,
+    required this.participants,
+    required this.priority,
+    required this.method,
+    required this.requireCommonTime,
+    required this.learningEnabled,
+    this.requiredRole,
+  });
+
+  final int teamCount;
+
+  /// Applicants now, for the default per-team capacity ceil(N / K).
+  final int participants;
+  final List<String> priority;
+  final String method;
+  final bool requireCommonTime;
+  final bool learningEnabled;
+
+  /// (role option ID, minimum per team), applied to every team.
+  final (String, int)? requiredRole;
+
+  List<String> get teamIds => [for (var i = 1; i <= teamCount; i++) 'team_$i'];
+
+  Map<String, Object> toJson() {
+    final cap = participants <= 0 ? 1 : (participants / teamCount).ceil();
+    final role = requiredRole;
+    return {
+      'teamIds': teamIds,
+      'capacity': {for (final t in teamIds) t: cap},
+      'criteria': [
+        for (var i = 0; i < priority.length; i++)
+          {'key': priority[i], 'priority': i + 1},
+      ],
+      'formationMode': method,
+      'extraRequirements': [
+        if (requireCommonTime) {'type': 'commonTime'},
+        if (role != null)
+          for (final t in teamIds)
+            {
+              'type': 'requiredRole',
+              'teamId': t,
+              'role': role.$1,
+              'minimum': role.$2,
+            },
+      ],
+      'learningEnabled': learningEnabled,
+    };
+  }
+}

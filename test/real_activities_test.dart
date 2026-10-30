@@ -116,7 +116,11 @@ void main() {
       });
     }
     final source = FirestoreActivitiesSource(db);
-    expect((await source.watchActivities('g').first).map((a) => a.id), ['new', 'old']);
+    // Ended activities are listed for their feedback window; the group home
+    // hides them once feedback closes (feedbackClosedAt).
+    final listed = await source.watchActivities('g').first;
+    expect(listed.map((a) => a.id), ['ended', 'new', 'old']);
+    expect(listed.first.feedbackOpen, isTrue);
     expect((await source.watchActivity('old').first)!.capacity, 10);
     expect(await source.watchActivity('missing').first, isNull);
   });

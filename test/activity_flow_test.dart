@@ -81,8 +81,39 @@ class FakeBackend implements ActivityBackend {
   @override
   Future<void> updateRegistration(String id, Map<String, Object> a) async =>
       updated.add(a);
+  final cancelled = <String>[];
   @override
-  Future<void> cancelRegistration(String id) async {}
+  Future<void> cancelRegistration(String id) async => cancelled.add(id);
+
+  final calls = <String>[];
+  final feedback = StreamController<Map<String, int>?>.broadcast();
+  final summary = StreamController<FeedbackSummary?>.broadcast();
+  final consent = StreamController<bool>.broadcast();
+  @override
+  Future<void> startActivity(String id) async => calls.add('start');
+  @override
+  Future<void> endActivity(String id) async => calls.add('end');
+  @override
+  Future<void> closeFeedback(String id) async => calls.add('closeFeedback');
+  @override
+  Stream<Map<String, int>?> myFeedback(String g, String a) => feedback.stream;
+  @override
+  Future<void> submitFeedback(String id, Map<String, int> scores) async =>
+      calls.add('feedback $scores');
+  @override
+  Stream<FeedbackSummary?> feedbackSummary(String id) => summary.stream;
+  @override
+  Future<List<String>> publishedTeamIds(String id, int v) async =>
+      ['team_1', 'team_2'];
+  @override
+  Stream<bool> learningConsent() => consent.stream;
+  @override
+  Future<void> setLearningConsent(bool agreed) async =>
+      calls.add('consent $agreed');
+  @override
+  Future<void> leaveGroup(String groupId) async => calls.add('leave');
+  @override
+  Future<void> deleteAccount() async => calls.add('delete');
 }
 
 Widget app(Widget home) => MaterialApp(theme: buildTeamixTheme(), home: home);
@@ -108,6 +139,7 @@ void main() {
   test('NewActivity는 functions의 createActivity 형식으로 보낸다', () {
     final json = NewActivity(
       title: ' 해커톤 ',
+      type: 'study',
       capacity: 20,
       targetTeamSize: 4,
       deadline: DateTime(2030),
@@ -116,6 +148,7 @@ void main() {
       requireCommonTime: true,
     ).toJson();
     expect(json['title'], '해커톤');
+    expect(json['type'], 'study');
     expect(json['deadlineAt'], DateTime(2030).millisecondsSinceEpoch);
     final qs = json['questions']! as List;
     expect(qs.first, {
@@ -232,6 +265,11 @@ void main() {
 
     await tester.tap(submit);
     await tester.pumpAndSettle();
+    expect(find.text('소모임 유형을 골라 주세요.'), findsOneWidget);
+
+    await tester.tap(find.text('스터디'));
+    await tester.tap(submit);
+    await tester.pumpAndSettle();
     expect(find.text('소모임 이름을 1~120자로 입력해 주세요.'), findsOneWidget);
 
     await tester.enterText(find.byKey(const ValueKey('activity-title')), '해커톤');
@@ -254,6 +292,7 @@ void main() {
     await tester.pumpAndSettle();
     final a = sent.single;
     expect(a.title, '해커톤');
+    expect(a.type, 'study');
     expect(a.capacity, 20);
     expect(a.targetTeamSize, 4);
     expect(a.deadline, DateTime(2026, 11, 6, 23, 59));

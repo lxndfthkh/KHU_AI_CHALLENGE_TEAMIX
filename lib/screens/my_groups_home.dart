@@ -95,6 +95,37 @@ class MyGroupsHome extends StatelessWidget {
     );
   }
 
+  Future<void> _deleteAccount(BuildContext context) async {
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (d) => AlertDialog(
+        title: const Text('계정을 삭제할까요?'),
+        content: const Text(
+          '내 프로필, 멤버십, 신청, 후기와 학습 동의가 지워지고 되돌릴 수 없어요. '
+          '혼자 남은 운영진이면 먼저 다른 운영진을 두어야 해요.',
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(d, false), child: const Text('취소')),
+          TextButton(
+            onPressed: () => Navigator.pop(d, true),
+            child: const Text('삭제', style: TextStyle(color: teamixAddForeground)),
+          ),
+        ],
+      ),
+    );
+    if (ok != true || !context.mounted) return;
+    final messenger = ScaffoldMessenger.of(context);
+    try {
+      await activityBackend!.deleteAccount();
+      messenger.showSnackBar(const SnackBar(content: Text('계정을 삭제했어요.')));
+      await onSignOut();
+    } catch (_) {
+      messenger.showSnackBar(
+        const SnackBar(content: Text('삭제하지 못했어요. 혼자 남은 운영진인지 확인해 주세요.')),
+      );
+    }
+  }
+
   void _account(BuildContext context) {
     final empty = groups?.isEmpty ?? true;
 
@@ -116,9 +147,26 @@ class MyGroupsHome extends StatelessWidget {
               Text(
                 demoMode
                     ? '디자인 시연 모드 · 실제 계정에 연결되지 않았어요.'
-                    : '내 모임, 모임 만들기, 초대 코드 참여, 가입 승인은 Firestore에 연결돼 있어요.',
+                    : '내 모임, 소모임, 팀 편성, 후기가 실제 데이터로 연결돼 있어요.',
                 style: const TextStyle(color: teamixMuted),
               ),
+              if (activityBackend != null)
+                StreamBuilder<bool>(
+                  stream: activityBackend!.learningConsent(),
+                  builder: (context, snapshot) => SwitchListTile(
+                    key: const ValueKey('account-learning-consent'),
+                    contentPadding: EdgeInsets.zero,
+                    value: snapshot.data ?? false,
+                    onChanged: busy
+                        ? null
+                        : (v) => activityBackend!.setLearningConsent(v),
+                    title: const Text('학습 활용 동의'),
+                    subtitle: const Text(
+                      '켜면 이후 쓰는 후기부터 편성 개선에 쓰여요. 이름과 응답은 빠져요.',
+                      style: TextStyle(fontSize: 11),
+                    ),
+                  ),
+                ),
               if (demoMode && onToggleDemoGroups != null)
                 ListTile(
                   contentPadding: EdgeInsets.zero,
@@ -142,6 +190,25 @@ class MyGroupsHome extends StatelessWidget {
                         await onSignOut();
                       },
               ),
+              if (activityBackend != null)
+                ListTile(
+                  contentPadding: EdgeInsets.zero,
+                  leading: const Icon(Icons.person_off_outlined, color: teamixAddForeground),
+                  title: const Text(
+                    '계정 삭제',
+                    style: TextStyle(color: teamixAddForeground),
+                  ),
+                  subtitle: const Text(
+                    '공개된 팀 기록에는 "삭제된 사용자"로 남아요.',
+                    style: TextStyle(fontSize: 11),
+                  ),
+                  onTap: busy
+                      ? null
+                      : () async {
+                          Navigator.pop(sheet);
+                          await _deleteAccount(context);
+                        },
+                ),
             ],
           ),
         ),

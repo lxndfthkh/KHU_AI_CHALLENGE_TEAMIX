@@ -70,7 +70,7 @@
       "endedAt": "timestamp or null, set by endActivity (active -> ended)",
       "endedVersion": "integer or null, publishedVersion at endActivity; feedback is linked to this version",
       "feedbackClosedAt": "timestamp or null; feedback accepted only while status == ended and this is null. Set by closeFeedback or 7 days after endedAt",
-      "type": "optional study | project | social | other (편성학습_v3 activityType feature; not collected yet -> null)"
+      "type": "study | project | social | other, chosen on 소모임 창설 (편성학습_v3 activityType feature; null for activities created before it)"
     },
     "notes": "No teamCount input required at creation. No matching method or private constraints on this member-readable document."
   },
