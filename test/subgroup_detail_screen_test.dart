@@ -67,7 +67,7 @@ void main() {
       await tester.pumpWidget(MaterialApp(
         theme: buildTeamixTheme(),
         home: MyGroupsHome(
-          repository: repository,
+          groups: DemoGroupRepository.summariesOf(repository),
           onCreateGroup: () {},
           onJoinGroup: () {},
           onSignOut: () async {},

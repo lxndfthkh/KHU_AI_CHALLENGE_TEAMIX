@@ -11,15 +11,16 @@
   "groups": {
     "path": "groups/{groupId}",
     "fields": {
-      "name": "string",
-      "description": "string",
+      "name": "string, 1..40",
+      "description": "string, 1..100",
+      "categories": "list of 0..2 strings, each 1..20",
       "ownerId": "uid",
       "themeColor": "mint | peach | lilac",
       "status": "active | archived",
       "createdAt": "timestamp",
       "updatedAt": "timestamp"
     },
-    "notes": "Creation atomically creates approved admin membership. Colors consistent on list and detail."
+    "notes": "Client creates it in one batch with the creator's approved admin membership; rules require both (see docs/FIRESTORE.md). Colors consistent on list and detail."
   },
   "memberships": {
     "path": "memberships/{groupId}_{uid}",

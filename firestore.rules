@@ -27,14 +27,44 @@ service cloud.firestore {
         && request.resource.data.createdAt == resource.data.createdAt && request.resource.data.updatedAt == request.time;
       allow delete: if false;
     }
+    // createGroup without a server: one batch writes groups/{gid} and the
+    // creator's approved admin membership; each rule requires the other.
+    function shortString(s, max) { return s is string && s.size() > 0 && s.size() <= max; }
+    function validCategories(c) {
+      return c is list && c.size() <= 2
+        && (c.size() < 1 || shortString(c[0], 20))
+        && (c.size() < 2 || shortString(c[1], 20));
+    }
+    function validNewGroup(d) {
+      return d.keys().hasOnly(['name','description','categories','ownerId','themeColor','status','createdAt','updatedAt'])
+        && d.keys().hasAll(['name','description','categories','ownerId','themeColor','status','createdAt','updatedAt'])
+        && shortString(d.name, 40) && shortString(d.description, 100) && validCategories(d.categories)
+        && d.ownerId == request.auth.uid && d.themeColor in ['mint','peach','lilac'] && d.status == 'active'
+        && d.createdAt == request.time && d.updatedAt == request.time;
+    }
+    function validCreatorMembership(id, d) {
+      return d.keys().hasOnly(['groupId','userId','displayName','role','status','createdAt','updatedAt'])
+        && d.keys().hasAll(['groupId','userId','displayName','role','status','createdAt','updatedAt'])
+        && d.groupId is string && id == d.groupId + '_' + request.auth.uid
+        && d.userId == request.auth.uid && shortString(d.displayName, 40)
+        && d.role == 'admin' && d.status == 'approved'
+        && d.createdAt == request.time && d.updatedAt == request.time
+        // Only for a group created in this same batch, never an existing one.
+        && !exists(/databases/$(database)/documents/groups/$(d.groupId))
+        && existsAfter(/databases/$(database)/documents/groups/$(d.groupId))
+        && getAfter(/databases/$(database)/documents/groups/$(d.groupId)).data.ownerId == request.auth.uid;
+    }
     match /groups/{gid} {
       allow read: if member(gid);
-      allow write: if false;
+      allow create: if signedIn() && !gid.matches('.*_.*') && validNewGroup(request.resource.data)
+        && existsAfter(/databases/$(database)/documents/memberships/$(gid + '_' + request.auth.uid));
+      allow update, delete: if false;
     }
     match /memberships/{id} {
       allow read: if signedIn() && (resource.data.userId == request.auth.uid || admin(resource.data.groupId)
         || (member(resource.data.groupId) && resource.data.status == 'approved'));
-      allow write: if false;
+      allow create: if signedIn() && validCreatorMembership(id, request.resource.data);
+      allow update, delete: if false;
     }
     match /invitations/{id} { allow read, write: if false; }
     match /activities/{aid} {

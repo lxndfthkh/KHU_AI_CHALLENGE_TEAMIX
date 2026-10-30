@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../data/demo_group_repository.dart';
 import '../theme.dart';
+import 'group_card_palette.dart';
 import 'matching_settings_screen.dart';
 
 /// UI branching only. Server/rules must enforce actual permissions.
@@ -10,11 +11,15 @@ class SubgroupDetailScreen extends StatelessWidget {
     required this.groupName,
     required this.subgroup,
     required this.isOperator,
+    this.palette = GroupCardPalette.defaultJoined,
   });
 
   final String groupName;
   final DemoSubgroup subgroup;
   final bool isOperator;
+
+  /// The parent group's color from the groups home.
+  final GroupCardPalette palette;
 
   void _pending(BuildContext context, String feature) {
     ScaffoldMessenger.of(context).showSnackBar(
@@ -75,7 +80,7 @@ class SubgroupDetailScreen extends StatelessWidget {
   Widget _info(String label, String value) => Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(label, style: const TextStyle(fontSize: 11, color: teamixPrimary)),
+          Text(label, style: TextStyle(fontSize: 11, color: palette.accent)),
           const SizedBox(height: 7),
           Text(value, style: const TextStyle(
               fontSize: 14, fontWeight: FontWeight.w700, color: ink)),
@@ -134,14 +139,14 @@ class SubgroupDetailScreen extends StatelessWidget {
             children: [
               Row(children: [
                 Expanded(child: Text('$groupName · 프로젝트',
-                    style: const TextStyle(fontSize: 11, color: teamixPrimary))),
+                    style: TextStyle(fontSize: 11, color: palette.accent))),
                 Material(
-                  color: mint,
+                  color: palette.background,
                   borderRadius: BorderRadius.circular(12),
                   child: Padding(
                     padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 5),
                     child: Text(_statusLabel,
-                        style: const TextStyle(fontSize: 11, color: teamixPrimary)),
+                        style: TextStyle(fontSize: 11, color: palette.accent)),
                   ),
                 ),
               ]),
@@ -154,7 +159,7 @@ class SubgroupDetailScreen extends StatelessWidget {
                   fontSize: 13, height: 1.8, color: teamixActionForeground)),
               const SizedBox(height: 22),
               Material(
-                color: mint,
+                color: palette.background,
                 borderRadius: BorderRadius.circular(21),
                 clipBehavior: Clip.antiAlias,
                 child: Padding(
