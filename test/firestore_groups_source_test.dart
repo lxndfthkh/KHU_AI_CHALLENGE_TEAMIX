@@ -156,7 +156,9 @@ void main() {
 
     expect(find.text('주말 산책 모임'), findsOneWidget);
     expect(find.text('새 모집'), findsOneWidget);
-    expect(find.text('등록된 소모임이 없어요.'), findsNWidgets(2));
+    expect(find.text('등록된 소모임이 없어요.'), findsOneWidget);
+    // The pending card can't read activities, so it doesn't claim there are none.
+    expect(find.text('승인되면 소모임을 볼 수 있어요.'), findsOneWidget);
     await tester.scrollUntilVisible(find.text('대표자'), 150);
     expect(find.text('대표자'), findsOneWidget);
     expect(find.text(GroupSummary.pendingName), findsOneWidget);
