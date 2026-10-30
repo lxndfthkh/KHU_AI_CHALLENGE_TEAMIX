@@ -1,8 +1,10 @@
 """Production authenticated formation API; server.py remains main's demo API."""
 import logging
+import os
 import firebase_admin
 from firebase_admin import auth, firestore
 from fastapi import FastAPI, Depends, HTTPException
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from formation import Invalid
 from service import Denied, Missing, Stale
@@ -27,8 +29,16 @@ def get_service():
     if not firebase_admin._apps: firebase_admin.initialize_app()
     return ValidatedFormationService(FirestoreRepository(firestore.client()))
 
+# The Flutter web app calls this API from the browser, so it needs CORS.
+# Default: local `flutter run -d chrome` (any port) and Firebase Hosting.
+# Override with ALLOWED_ORIGIN_REGEX on Cloud Run if the app moves elsewhere.
+ALLOWED_ORIGIN_REGEX=os.environ.get('ALLOWED_ORIGIN_REGEX',
+    r'^(http://(localhost|127\.0\.0\.1)(:\d+)?|https://teamix-309c0\.(web\.app|firebaseapp\.com))$')
+
 def create_app():
     app=FastAPI(title='TEAMIX formation',docs_url=None,redoc_url=None,openapi_url=None)
+    app.add_middleware(CORSMiddleware,allow_origin_regex=ALLOWED_ORIGIN_REGEX,
+                       allow_methods=['POST','GET'],allow_headers=['Authorization','Content-Type'])
     def handler(action):
         def endpoint(body:dict,uid=Depends(current_uid),service=Depends(get_service)):
             try: return service.invoke(action,uid,body)
