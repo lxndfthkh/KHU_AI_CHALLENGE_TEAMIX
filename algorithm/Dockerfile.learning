@@ -1,0 +1,10 @@
+# Cloud Run job for learning stages (편성학습_v3 6장~). Run on a schedule, e.g. hourly:
+#   python -m learning.extract   -> extracts every closed activity that is new or changed, then updates monitoring
+#   python -m learning.train     -> trains when due (monthly or 10+ new rows); writes candidates only
+FROM python:3.12-slim
+WORKDIR /app
+COPY requirements-stage3.txt requirements-learning.txt ./
+RUN pip install --no-cache-dir -r requirements-learning.txt
+COPY . .
+USER 65532:65532
+CMD ["python", "-m", "learning.extract"]

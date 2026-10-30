@@ -63,7 +63,12 @@
       "questionsLockedAt": "timestamp or null",
       "publishedVersion": "integer or null",
       "createdAt": "timestamp",
-      "updatedAt": "timestamp"
+      "updatedAt": "timestamp",
+      "startedAt": "timestamp or null, set by startActivity (closed+published -> active)",
+      "endedAt": "timestamp or null, set by endActivity (active -> ended)",
+      "endedVersion": "integer or null, publishedVersion at endActivity; feedback is linked to this version",
+      "feedbackClosedAt": "timestamp or null; feedback accepted only while status == ended and this is null. Set by closeFeedback or 7 days after endedAt",
+      "type": "optional study | project | social | other (편성학습_v3 activityType feature; not collected yet -> null)"
     },
     "notes": "No teamCount input required at creation. No matching method or private constraints on this member-readable document."
   },
@@ -73,9 +78,18 @@
       "method": "balanced | similar",
       "enabledQuestionIds": "list",
       "weights": "map, algorithm contract TBD",
-      "updatedAt": "timestamp"
+      "updatedAt": "timestamp",
+      "questionCriteria": "map questionId -> role | time | experience | interest (role=single, time/interest=multiple, experience=scale 1..5)",
+      "priority": "list of criteria plus 'size', most important first; default = enabled criteria order + 'size'",
+      "requireCommonTime": "boolean, every team shares at least one time option",
+      "requiredRoles": "list of {teamId, optionId, minimum}",
+      "teamIds": "list, server-set at closeRecruitment (count = ceil(participants / targetTeamSize)); never recomputed afterwards",
+      "teamCapacities": "map teamId -> positive integer or null (no capacity); default ceil(N/K) set once at closeRecruitment",
+      "capacityInitialized": "boolean, server-maintained",
+      "settingsVersion": "integer, server-maintained; bumped on every settings change",
+      "learningEnabled": "boolean, default true; per-activity switch for learned correction factors (편성학습_v4 9장)"
     },
-    "notes": "Admin-only read. Placement preferences are NOT copied here."
+    "notes": "Admin-only read. Placement preferences are NOT copied here. Engine fields are written by createActivity/updateMatchingSettings/closeRecruitment on the server."
   },
   "activityQuestions": {
     "path": "activities/{activityId}/questions/{questionId}",
@@ -103,18 +117,24 @@
     "notes": "Submit/edit/cancel through server transaction checking membership, deadline, status and capacity; retries must not increment count twice. Draft form is not a registration."
   },
   "drafts": {
-    "path": "drafts/{draftId}",
+    "path": "drafts/{activityId}",
     "fields": {
       "activityId": "id",
       "groupId": "id",
       "version": "integer",
       "teams": "list of team id and member UID list",
-      "validation": "non-sensitive validation map",
+      "validation": "non-sensitive map {valid, conflicts, summary: public per-team metrics}",
       "status": "generating | ready | failed",
       "createdAt": "timestamp",
-      "updatedAt": "timestamp"
+      "updatedAt": "timestamp",
+      "unassigned": "list of uid not yet in a team (manual edit)",
+      "locks": "map uid -> {teamId, type: manual | default}",
+      "discarded": "boolean",
+      "sourceRunId": "server run id or null",
+      "manuallyEdited": "boolean",
+      "basedOnPublishedVersion": "integer or null"
     },
-    "notes": "Admin only. No preference targets, counts, raw reasons, or revealing errors. Draft changes never mutate publications."
+    "notes": "Admin only. No preference targets, counts, raw reasons, or revealing errors. Draft changes never mutate publications. One working draft per activity; history in drafts/{activityId}/history/{runId}."
   },
   "publications": {
     "path": "publications/{activityId}_v{version}",
@@ -124,9 +144,11 @@
       "version": "integer",
       "teams": "safe team snapshots",
       "publishedBy": "uid",
-      "publishedAt": "timestamp"
+      "publishedAt": "timestamp",
+      "validFrom": "timestamp (= publishedAt)",
+      "validTo": "timestamp or null; set when the next version is published"
     },
-    "notes": "Immutable server snapshot. Admin read only. Members receive their own teamViews instead of the entire roster."
+    "notes": "Server snapshot; only validTo is set later. Admin read only. Members receive their own teamViews instead of the entire roster."
   },
   "teamViews": {
     "path": "teamViews/{activityId}_{uid}",
@@ -150,11 +172,17 @@
       "groupId": "id",
       "userId": "uid",
       "teamId": "id",
-      "rating": "integer 1..5",
-      "comment": "optional string",
-      "createdAt": "timestamp"
+      "rating": "integer 1..5 (= scores.overall)",
+      "comment": "not collected (TEAMBLE: scores only, 편성학습_v4); submitFeedback rejects it",
+      "createdAt": "timestamp",
+      "scores": "{overall, schedule, roles, rejoin} each integer 1..5 (questionnaire r2)",
+      "questionnaireVersion": "r2",
+      "teamVersion": "integer, endedVersion (server-set; client values ignored)",
+      "membershipRatio": "0..1, time in teamId during [startedAt, endedAt] across publications (server-set)",
+      "learningConsent": "boolean copy of consents/{uid}.learning.agreed at writing time",
+      "updatedAt": "timestamp"
     },
-    "notes": "Only author reads raw record. Server checks ended activity and participant. Admin reads aggregate from activities/{id}/feedbackSummary/current."
+    "notes": "Only author reads raw record. Server checks ended activity and participant. Admin reads aggregate from activities/{id}/feedbackSummary/current. Written by submitFeedback; editable until feedbackClosedAt."
   },
   "placementPreferences": {
     "path": "placementPreferences/{groupId}_{uid}_{targetUid}",
@@ -172,12 +200,128 @@
     "path": "notifications/{notificationId}",
     "fields": {
       "userId": "uid",
-      "type": "joinApproved | joinRejected | teamPublished | teamChanged",
+      "type": "joinApproved | joinRejected | teamPublished | teamChanged | feedbackRequested",
       "groupId": "id",
       "activityId": "optional id",
       "createdAt": "timestamp",
       "readAt": "timestamp or null"
     },
     "notes": "Owner read/mark read only. Server writes, idempotent operation IDs."
+  },
+  "formationRuns": {
+    "path": "formationRuns/{runId}",
+    "fields": {
+      "activityId": "id",
+      "groupId": "id",
+      "status": "OPTIMAL | FEASIBLE | INFEASIBLE | LIMIT_NO_CANDIDATE | STALE | ERROR"
+    },
+    "notes": "Server-only run log (default-deny). Public fields only; serverRuns/{runId} holds the full snapshot incl. private inputs, never client readable."
+  },
+  "feedbackSummary": {
+    "path": "activities/{activityId}/feedbackSummary/current",
+    "fields": {
+      "questionnaireVersion": "r2",
+      "minRespondents": "3",
+      "teams": "map teamId -> {respondents, averages {overall, schedule, roles, rejoin}}; only teams with >= 3 respondents",
+      "updatedAt": "timestamp"
+    },
+    "notes": "Admin read only. No individual rows or user IDs."
+  },
+  "consents": {
+    "path": "consents/{uid}",
+    "fields": {
+      "learning": "{agreed: boolean, version: l2, at: timestamp}",
+      "updatedAt": "timestamp"
+    },
+    "notes": "Owner read only; written by setLearningConsent. Kept out of users/{uid} because its rules allow only displayName/createdAt/updatedAt."
+  },
+  "rateLimits": {
+    "path": "rateLimits/{uid}_{kind}",
+    "fields": {
+      "windowStart": "epoch ms",
+      "count": "integer"
+    },
+    "notes": "Server-only (default deny). Invitation code checks: 20 per 10 minutes per user."
+  },
+  "trainingDatasets": {
+    "path": "trainingDatasets/fx1, trainingDatasets/fx1/rows/{activityId}_v{n}_{teamId}, trainingDatasets/fx1/activities/{activityId}",
+    "fields": {
+      "rows": "one team of the ending publication: activityType, formationMode, teamCount, teamSize, active_* and loss_* per criterion (loss = publication losses / 1000), commonSlotCount, manuallyEdited, republishCount, y_overall/schedule/roles/rejoin, weight_* (v3 default weights), n_reviews, response_rate, activityId, teamVersion, teamId, sourceRefs (sha256 of feedback paths), extractorVersion fx1",
+      "activities": "re-extraction marker {extractedAt, rowIds, summaryUpdatedAt}",
+      "dataset": "trainingDatasets/fx1 {extractorVersion, updatedAt, dirty, dirtyAt, cleanedAt}: dirty is set when feedback or an account is deleted and cleared by the next training run"
+    },
+    "notes": "Server-only (default deny). Written by algorithm/learning/extract.py after feedback closes. No user IDs, answers, private preferences, or internal scores. Included reviews: learningConsent and membershipRatio >= 0.5; rows need >= 2 included reviews and response rate >= 0.5."
+  },
+  "trainingRuns": {
+    "path": "trainingRuns/{runId}",
+    "fields": {
+      "status": "candidate | not_better_than_baselines | insufficient_data",
+      "rowCount": "integer",
+      "activityCount": "integer",
+      "datasetHash": "sha256",
+      "trainerVersion": "tr1",
+      "trainedAt": "timestamp",
+      "datasetId": "fx1",
+      "modelId": "runId if a candidate was created, else null"
+    },
+    "notes": "Server-only (default deny). One per training job run (algorithm/learning/train.py)."
+  },
+  "modelVersions": {
+    "path": "modelVersions/{modelId}",
+    "fields": {
+      "status": "candidate | approved | active | retired",
+      "b": "map criterion -> correction factor 0.5..2.0",
+      "alpha": "Ridge alpha",
+      "coefficients": "standardized coefficients by feature",
+      "featureNames": "list",
+      "scaler": "{mean, scale}",
+      "validation": "{rmse {model, baseline_mean, baseline_weighted_loss}, auxiliary (y_schedule, y_roles, y_rejoin), reformationCheck}",
+      "bootstrapInterval": "80% interval per criterion",
+      "uncertain": "criteria with b = 1 because the interval contains 0",
+      "rowCount": "integer",
+      "activityCount": "integer",
+      "datasetId": "fx1",
+      "extractorVersion": "fx1",
+      "trainerVersion": "tr1",
+      "trainedAt": "timestamp",
+      "approvedBy": "uid or null",
+      "approvedAt": "timestamp or null",
+      "activatedAt": "timestamp",
+      "retiredAt": "timestamp",
+      "fileUri": "null (model is stored in this document)"
+    },
+    "notes": "Server-only (default deny). Created as candidate by training; approve/activate/deactivate by a service admin (custom claim admin: true) via functions/src/models.js. Exactly one active."
+  },
+  "appConfigLearning": {
+    "path": "appConfig/learning",
+    "fields": {
+      "activeModelId": "modelId or null (null = default weights)",
+      "b": "correction factors of the active model or null",
+      "activatedAt": "timestamp",
+      "activatedBy": "uid"
+    },
+    "notes": "Signed-in read (existing appConfig rule), server write (models.js). The formation engine applies b only when the activity's learningEnabled is true."
+  },
+  "learningMonitor": {
+    "path": "learningMonitor/{activityId}",
+    "fields": {
+      "modelId": "model used by the formation behind the ending publication, or null",
+      "source": "ai | manual (manually edited publications have no run)",
+      "respondents": "integer",
+      "yOverallMean": "number or null",
+      "feedbackClosedAt": "timestamp",
+      "recordedAt": "timestamp"
+    },
+    "notes": "Server-only (default deny). Written by algorithm/learning/monitor.py after extraction (편성학습_v4 11장)."
+  },
+  "learningReports": {
+    "path": "learningReports/latest",
+    "fields": {
+      "status": "waiting | ready",
+      "groups": "map modelId|default -> {activities, meanYOverall}",
+      "modelsReady": "models with >= 10 activities",
+      "caution": "text: no causal claims"
+    },
+    "notes": "Server-only (default deny)."
   }
 }
