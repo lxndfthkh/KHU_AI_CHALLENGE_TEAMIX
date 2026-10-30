@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../theme.dart';
 import '../data/demo_group_repository.dart';
+import 'group_card_palette.dart';
 import 'subgroup_detail_screen.dart';
 import 'matching_settings_screen.dart';
 
@@ -11,14 +12,19 @@ class GroupHome extends StatelessWidget {
     super.key,
     this.groupName = '경희 메이커스',
     this.isOperator = false,
+    this.palette = GroupCardPalette.defaultJoined,
   });
 
   final String groupName;
   final bool isOperator;
+
+  /// Same colors as this group's card on the groups home.
+  final GroupCardPalette palette;
   void _detail(BuildContext context, DemoSubgroup subgroup) {
     Navigator.of(context).push<void>(MaterialPageRoute<void>(
       builder: (_) => SubgroupDetailScreen(
         groupName: groupName, subgroup: subgroup, isOperator: isOperator,
+        palette: palette,
       ),
     ));
   }
@@ -137,13 +143,13 @@ class GroupHome extends StatelessWidget {
                     width: 49,
                     height: 49,
                     decoration: BoxDecoration(
-                      color: mint,
+                      color: palette.background,
                       borderRadius: BorderRadius.circular(16),
                     ),
-                    child: const Icon(
+                    child: Icon(
                       Icons.filter_vintage_outlined,
                       size: 29,
-                      color: teamixPrimary,
+                      color: palette.accent,
                     ),
                   ),
                   const SizedBox(width: 13),
@@ -167,14 +173,14 @@ class GroupHome extends StatelessWidget {
                             vertical: 4,
                           ),
                           decoration: BoxDecoration(
-                            color: mint,
+                            color: palette.background,
                             borderRadius: BorderRadius.circular(12),
                           ),
                           child: Text(
                             isOperator ? '운영진' : '부원',
                             style: TextStyle(
                               fontSize: 10,
-                              color: teamixPrimary,
+                              color: palette.accent,
                             ),
                           ),
                         ),
@@ -282,8 +288,8 @@ class GroupHome extends StatelessWidget {
                   child: _Activity(
                     title: subgroup.title,
                     questions: '희망 역할 · 가능 시간 · 경험 수준',
-                    color: mint,
-                    accent: teamixPrimary,
+                    color: palette.background,
+                    accent: palette.accent,
                     onDetail: () => _detail(context, subgroup),
                     onEdit: isOperator
                         ? () => _preview(context, '소모임 내용·상태 수정')

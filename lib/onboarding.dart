@@ -1,8 +1,13 @@
 import 'package:flutter/material.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 
 import 'data/demo_group_repository.dart';
+import 'data/firestore_group_writer.dart';
+import 'data/firestore_groups_source.dart';
 import 'data/group_repository.dart';
+import 'data/user_profile.dart';
+import 'models/group_summary.dart';
 import 'screens/my_groups_home.dart';
 import 'screens/onboarding/auth.dart';
 import 'screens/onboarding/create_group.dart';
@@ -16,7 +21,8 @@ import 'widgets/onboarding_widgets.dart';
 
 export 'theme.dart' show ink, coral, mint, butter, lilac;
 
-// Auth is real; membership and invitation fixtures are not persisted.
+// Auth, the groups home and group creation are real; invite/join flows stay
+// in-memory demos until the server commands in docs/FIRESTORE.md exist.
 class TeamixApp extends StatelessWidget {
   const TeamixApp({
     super.key,
@@ -57,6 +63,10 @@ class _EntryScreenState extends State<EntryScreen> {
   String page = 'loading', invite = '', group = '', notice = '';
 
   late GroupRepository groupRepository;
+
+  // Cached so rebuilds (e.g. busy toggles) don't resubscribe.
+  Stream<List<GroupSummary>>? myGroups;
+  String? myGroupsUid;
 
   final email = TextEditingController(),
       password = TextEditingController(),
@@ -145,7 +155,40 @@ class _EntryScreenState extends State<EntryScreen> {
     SnackBar(content: Text(text)),
   );
 
+  /// Signed-in user whose data lives in Firestore; null in demo mode.
+  User? get firestoreUser => widget.demoMode ? null : currentUser;
+
+  String profileName(User user) => nickname.text.trim().isNotEmpty
+      ? nickname.text.trim()
+      : user.displayName ?? user.email?.split('@').first ?? '';
+
+  Future<void> syncProfile() async {
+    final user = firestoreUser;
+    if (user == null) return;
+    try {
+      await ensureUserProfile(
+        FirebaseFirestore.instance,
+        user.uid,
+        profileName(user),
+      );
+    } catch (_) {
+      // The home doesn't depend on the profile; retry on next sign-in.
+    }
+  }
+
+  Stream<List<GroupSummary>> myGroupsFor(String uid) {
+    if (myGroups == null || myGroupsUid != uid) {
+      myGroupsUid = uid;
+      myGroups = FirestoreGroupsSource(
+        FirebaseFirestore.instance,
+        uid,
+      ).watchMyGroups();
+    }
+    return myGroups!;
+  }
+
   void route() {
+    syncProfile();
     if (invite.isNotEmpty) {
       checkInvite();
     } else {
@@ -261,6 +304,8 @@ class _EntryScreenState extends State<EntryScreen> {
       if (!mounted) return;
 
       groupRepository.clearMemberships();
+      myGroups = null;
+      myGroupsUid = null;
       clearInvite();
       password.clear();
       confirmation.clear();
@@ -313,7 +358,7 @@ class _EntryScreenState extends State<EntryScreen> {
     });
   }
 
-  void createGroup() {
+  Future<void> createGroup() async {
     if (name.text.trim().isEmpty ||
         intro.text.trim().isEmpty ||
         (categories.contains('기타') && other.text.trim().isEmpty)) {
@@ -321,7 +366,46 @@ class _EntryScreenState extends State<EntryScreen> {
       return;
     }
 
+    if (name.text.trim().length > groupNameMaxLength ||
+        intro.text.trim().length > groupDescriptionMaxLength ||
+        other.text.trim().length > groupCategoryMaxLength) {
+      toast(
+        '모임 이름은 $groupNameMaxLength자, 소개는 $groupDescriptionMaxLength자, '
+        '카테고리는 $groupCategoryMaxLength자까지 입력할 수 있어요.',
+      );
+      return;
+    }
+
     group = name.text.trim();
+
+    final user = firestoreUser;
+    if (user != null) {
+      if (busy) return;
+      setState(() => busy = true);
+      try {
+        await createGroupInFirestore(
+          FirebaseFirestore.instance,
+          uid: user.uid,
+          displayName: profileName(user),
+          name: group,
+          description: intro.text,
+          categories: [
+            for (final category in categories)
+              category == '기타' ? other.text.trim() : category,
+          ],
+        );
+        name.clear();
+        intro.clear();
+        other.clear();
+        categories.clear();
+        go('share');
+      } catch (_) {
+        if (mounted) toast('모임을 만들지 못했어요. 잠시 후 다시 시도해 주세요.');
+      } finally {
+        if (mounted) setState(() => busy = false);
+      }
+      return;
+    }
 
     if (groupRepository.containsGroup(group)) {
       toast('시연에서는 중복 이름 대신 다른 이름을 입력해 주세요.');
@@ -423,11 +507,13 @@ class _EntryScreenState extends State<EntryScreen> {
           onCategorySelected: selectCategory,
           onCreate: createGroup,
           onCancel: () => go('boundary'),
+          demo: firestoreUser == null,
         );
       case 'share':
         return buildShareInviteContent(
           ui: ui,
           group: group,
+          demo: firestoreUser == null,
           onSkip: () => go('boundary'),
         );
       default:
@@ -458,15 +544,31 @@ class _EntryScreenState extends State<EntryScreen> {
     final Widget content;
 
     if (!onboardingPages.contains(page)) {
-      content = MyGroupsHome(
-        repository: groupRepository,
-        demoMode: widget.demoMode,
-        busy: busy,
-        onCreateGroup: () => go('create'),
-        onJoinGroup: () => go('invite'),
-        onSignOut: signOut,
-        onToggleDemoGroups: toggleDemoGroups,
-      );
+      final uid = widget.demoMode ? null : currentUser?.uid;
+      Widget home(List<GroupSummary>? groups, {bool loadFailed = false}) =>
+          MyGroupsHome(
+            groups: groups,
+            loadFailed: loadFailed,
+            demoMode: widget.demoMode,
+            busy: busy,
+            onCreateGroup: () => go('create'),
+            // Joining needs server commands; only the demo writes it.
+            onJoinGroup: uid == null
+                ? () => go('invite')
+                : () => toast('모임 참가는 서버 기능 연결 후 사용할 수 있어요.'),
+            onSignOut: signOut,
+            onToggleDemoGroups: toggleDemoGroups,
+          );
+
+      content = uid == null
+          ? home(DemoGroupRepository.summariesOf(groupRepository))
+          : StreamBuilder<List<GroupSummary>>(
+              stream: myGroupsFor(uid),
+              builder: (context, snapshot) => home(
+                snapshot.data,
+                loadFailed: snapshot.hasError,
+              ),
+            );
     } else {
       content = Scaffold(
         appBar: AppBar(
@@ -493,7 +595,7 @@ class _EntryScreenState extends State<EntryScreen> {
                 children: [
                   OnboardingWidgets(busy: busy).panel(lilac, [
                     const Text(
-                      '개발용 · 인증만 실제 연결. 모임·초대·참여 요청은 메모리 시연이며 새로고침 시 초기화됩니다.',
+                      '개발용 · 인증, 내 모임 목록, 모임 만들기는 실제 연결. 초대·참여 요청은 메모리 시연이며 새로고침 시 초기화됩니다.',
                       style: TextStyle(fontSize: 12),
                     ),
                   ]),

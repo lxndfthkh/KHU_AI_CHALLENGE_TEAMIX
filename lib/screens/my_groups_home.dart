@@ -1,35 +1,32 @@
 import 'package:flutter/material.dart';
 
-import '../data/demo_group_repository.dart';
-import '../data/group_repository.dart';
+import '../models/group_summary.dart';
 import '../theme.dart';
+import 'group_card_palette.dart';
 import 'group_home.dart';
 
 class MyGroupsHome extends StatelessWidget {
   const MyGroupsHome({
     super.key,
-    required this.repository,
+    required this.groups,
     required this.onCreateGroup,
     required this.onJoinGroup,
     required this.onSignOut,
+    this.loadFailed = false,
     this.demoMode = false,
     this.busy = false,
     this.onToggleDemoGroups,
   });
 
-  final GroupRepository repository;
+  /// `null` while the first snapshot is loading.
+  final List<GroupSummary>? groups;
+  final bool loadFailed;
   final VoidCallback onCreateGroup;
   final VoidCallback onJoinGroup;
   final Future<void> Function() onSignOut;
   final bool demoMode;
   final bool busy;
   final VoidCallback? onToggleDemoGroups;
-
-  void _notice(BuildContext context, String text) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text(text)),
-    );
-  }
 
   void _add(BuildContext context) {
     showModalBottomSheet<void>(
@@ -79,7 +76,7 @@ class MyGroupsHome extends StatelessWidget {
   }
 
   void _account(BuildContext context) {
-    final empty = repository.memberships.isEmpty;
+    final empty = groups?.isEmpty ?? true;
 
     showModalBottomSheet<void>(
       context: context,
@@ -99,7 +96,7 @@ class MyGroupsHome extends StatelessWidget {
               Text(
                 demoMode
                     ? '디자인 시연 모드 · 실제 계정에 연결되지 않았어요.'
-                    : '인증만 실제 연결 · 모임 정보는 메모리 시연 데이터예요.',
+                    : '내 모임과 모임 만들기는 Firestore에 연결돼 있어요. 모임 참가는 서버 기능 연결 후 지원돼요.',
                 style: const TextStyle(color: teamixMuted),
               ),
               if (demoMode && onToggleDemoGroups != null)
@@ -154,65 +151,74 @@ class MyGroupsHome extends StatelessWidget {
     ),
   );
 
-  String _statusLabel(String status) {
-    switch (status) {
-      case 'owner':
-        return '대표자';
-      case 'member':
-        return '부원';
-      case 'pending':
-        return '승인 대기';
-      default:
-        return '상태 확인 필요';
-    }
-  }
-
-  void _openGroup(BuildContext context, String name, String status) {
-    if (status != 'owner' && status != 'member' && status != 'admin') {
-      _notice(context, '모임 상세는 아직 연결되지 않은 시연 화면이에요.');
-      return;
-    }
-    Navigator.of(context).push<void>(MaterialPageRoute<void>(
-      builder: (_) => GroupHome(
-        groupName: name,
-        isOperator: status == 'owner',
+  void _openGroup(
+    BuildContext context,
+    GroupSummary group,
+    GroupCardPalette palette,
+  ) {
+    Navigator.of(context).push<void>(
+      MaterialPageRoute<void>(
+        builder: (_) =>
+            GroupHome(
+              groupName: group.name,
+              isOperator: group.isOperator,
+              palette: palette,
+            ),
       ),
-    ));
+    );
   }
 
-  Widget _card(BuildContext context, MapEntry<String, String> entry) {
-    final name = entry.key;
-    final status = entry.value;
-    final pending = status == 'pending';
-    final walking = name == '주말 산책 모임';
-
-    final background = pending ? lilac : walking ? butter : mint;
-    final accent = pending
-        ? teamixPurpleAccent
-        : walking
-        ? teamixPeachAccent
-        : teamixPrimary;
-
-    final activities =
-        DemoGroupRepository.exampleActivities[name] ?? const <String>[];
+  Widget _card(BuildContext context, GroupSummary group, int joinedIndex) {
+    final palette = GroupCardPalette.forGroup(
+      joinedIndex,
+      isPending: group.pending,
+    );
 
     return _GroupCard(
-      name: name,
-      color: background,
-      accent: accent,
-      activities: activities,
-      roleLabel: _statusLabel(status),
-      pending: pending,
-      onTap: pending || busy
-          ? null
-          : () => _openGroup(context, name, status),
+      name: group.name,
+      color: palette.background,
+      accent: palette.accent,
+      activities: group.activityTitles,
+      roleLabel: group.roleLabel,
+      pending: group.pending,
+      onTap: group.pending || busy ? null : () => _openGroup(context, group, palette),
     );
+  }
+
+  List<Widget> _groupList(BuildContext context) {
+    final entries = groups;
+    if (loadFailed) {
+      return [
+        const _LoadMessage(
+          key: ValueKey('groups-load-failed'),
+          text: '내 모임을 불러오지 못했어요.\n잠시 후 다시 열어 주세요.',
+        ),
+      ];
+    }
+    if (entries == null) {
+      return const [
+        Padding(
+          padding: EdgeInsets.only(top: 40),
+          child: Center(child: CircularProgressIndicator()),
+        ),
+      ];
+    }
+    if (entries.isEmpty) return const [_EmptyGroups()];
+    return [
+      for (var i = 0; i < entries.length; i++) ...[
+        if (i > 0) const SizedBox(height: 8),
+        _card(
+          context,
+          entries[i],
+          // Pending groups don't advance the joined-color rotation.
+          entries.take(i).where((g) => !g.pending).length,
+        ),
+      ],
+    ];
   }
 
   @override
   Widget build(BuildContext context) {
-    final entries = repository.memberships.entries.toList();
-
     return Scaffold(
       body: SafeArea(
         child: Align(
@@ -274,13 +280,7 @@ class MyGroupsHome extends StatelessWidget {
                   ),
                 ),
                 const SizedBox(height: 12),
-                if (entries.isEmpty)
-                  const _EmptyGroups()
-                else
-                  for (var i = 0; i < entries.length; i++) ...[
-                    if (i > 0) const SizedBox(height: 8),
-                    _card(context, entries[i]),
-                  ],
+                ..._groupList(context),
               ],
             ),
           ),
@@ -436,6 +436,33 @@ class _GroupCard extends StatelessWidget {
   );
 }
 
+class _LoadMessage extends StatelessWidget {
+  const _LoadMessage({super.key, required this.text});
+
+  final String text;
+
+  @override
+  Widget build(BuildContext context) => Container(
+    width: double.infinity,
+    margin: const EdgeInsets.only(top: 18),
+    padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 28),
+    decoration: BoxDecoration(
+      color: teamixEmptyBackground,
+      border: Border.all(color: teamixEmptyBorder),
+      borderRadius: BorderRadius.circular(24),
+    ),
+    child: Text(
+      text,
+      textAlign: TextAlign.center,
+      style: const TextStyle(
+        fontSize: 13,
+        height: 1.7,
+        color: teamixEmptyTitle,
+      ),
+    ),
+  );
+}
+
 class _EmptyGroups extends StatelessWidget {
   const _EmptyGroups();
 
@@ -478,14 +505,9 @@ class _EmptyGroups extends StatelessWidget {
         const Text(
           '오른쪽 위 ＋를 눌러\n모임을 만들거나 초대 코드로 참여해보세요.',
           textAlign: TextAlign.center,
-          style: TextStyle(
-            fontSize: 12,
-            height: 1.9,
-            color: teamixEmptyBody,
-          ),
+          style: TextStyle(fontSize: 12, height: 1.9, color: teamixEmptyBody),
         ),
       ],
     ),
   );
 }
-

@@ -12,6 +12,7 @@ List<Widget> buildCreateGroupContent({
   required void Function(String category, bool selected) onCategorySelected,
   required VoidCallback onCreate,
   required VoidCallback onCancel,
+  bool demo = true,
 }) => [
   ui.title('함께할 사람들을\n모아보세요.'),
   const Text('팀 편성은 소모임을 만든 뒤 진행해요.'),
@@ -40,6 +41,6 @@ List<Widget> buildCreateGroupContent({
   ui.panel(butter, [
     const Text('생성자는 승인 없이 대표자가 됩니다. 비공개 배치 선호 열람 권한은 포함되지 않습니다.'),
   ]),
-  ui.button('모임 만들기 · 시연', onCreate),
+  ui.button(demo ? '모임 만들기 · 시연' : '모임 만들기', onCreate),
   ui.button('취소', onCancel),
 ];
