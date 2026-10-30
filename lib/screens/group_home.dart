@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 
 import '../theme.dart';
+import '../data/activity_registration.dart';
+import 'activity_forms.dart';
 import '../data/demo_group_repository.dart';
 import '../data/firestore_activities_source.dart';
 import '../widgets/invite_code_dialog.dart';
@@ -20,11 +22,17 @@ class GroupHome extends StatelessWidget {
     this.groupId,
     this.themeColor,
     this.activitiesSource,
+    this.registrationFactory,
   });
 
   final String groupName;
   final String? groupId, themeColor;
   final ActivitiesSource? activitiesSource;
+  final ActivityRegistrationApi Function()? registrationFactory;
+  ActivityRegistrationApi Function()? get effectiveRegistrationFactory {
+    final source = activitiesSource;
+    return registrationFactory ?? (source is ActivityRegistrationProvider ? source.newRegistrationApi : null);
+  }
   final bool isOperator;
 
   /// Same colors as this group's card on the groups home.
@@ -227,7 +235,13 @@ class GroupHome extends StatelessWidget {
                       child: _Action(
                         icon: Icons.add,
                         text: '소모임 창설',
-                        onTap: () => _preview(context, '소모임 창설'),
+                        onTap: effectiveRegistrationFactory == null
+                            ? () => _preview(context, '소모임 창설')
+                            : () => Navigator.of(context).push<String>(MaterialPageRoute(
+                                builder: (_) => CreateActivityScreen(
+                                  api: effectiveRegistrationFactory!(), groupId: groupId!,
+                                  themeColor: themeColor ?? 'mint', ownsApi: true),
+                              )),
                       ),
                     ),
                   ],
@@ -306,6 +320,7 @@ class GroupHome extends StatelessWidget {
               if (activitiesSource != null)
                 _RealActivities(
                   source: activitiesSource!,
+                  registrationFactory: effectiveRegistrationFactory,
                   groupId: groupId!,
                   groupName: groupName,
                   palette: palette,
@@ -484,6 +499,7 @@ class _Activity extends StatelessWidget {
 class _RealActivities extends StatefulWidget {
   const _RealActivities({
     required this.source,
+    this.registrationFactory,
     required this.groupId,
     required this.groupName,
     required this.palette,
@@ -491,6 +507,7 @@ class _RealActivities extends StatefulWidget {
     this.themeColor,
   });
   final ActivitiesSource source;
+  final ActivityRegistrationApi Function()? registrationFactory;
   final String groupId, groupName;
   final String? themeColor;
   final GroupCardPalette palette;
@@ -560,6 +577,7 @@ class _RealActivitiesState extends State<_RealActivities> {
                       MaterialPageRoute<void>(
                         builder: (_) => RealSubgroupDetailScreen(
                           source: widget.source,
+                          registrationFactory: widget.registrationFactory,
                           activityId: activity.id,
                           groupId: widget.groupId,
                           groupName: widget.groupName,
