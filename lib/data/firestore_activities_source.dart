@@ -1,5 +1,4 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'activity_registration.dart';
 
 /// Member-readable fields only; never reads matching settings or answers.
 class ActivityRecord {
@@ -35,11 +34,9 @@ abstract class ActivitiesSource {
   Stream<ActivityRecord?> watchActivity(String activityId);
 }
 
-class FirestoreActivitiesSource implements ActivitiesSource, ActivityRegistrationProvider {
+class FirestoreActivitiesSource implements ActivitiesSource {
   FirestoreActivitiesSource(this._db);
   final FirebaseFirestore _db;
-  @override
-  ActivityRegistrationApi newRegistrationApi() => FirebaseActivityRegistration(db: _db);
   @override
   Stream<List<ActivityRecord>> watchActivities(String groupId) => _db
     .collection('activities').where('groupId', isEqualTo: groupId)
