@@ -31,8 +31,14 @@ class GroupHome extends StatelessWidget {
   final ActivityRegistrationApi Function()? registrationFactory;
   ActivityRegistrationApi Function()? get effectiveRegistrationFactory {
     final source = activitiesSource;
-    return registrationFactory ?? (source is ActivityRegistrationProvider ? source.newRegistrationApi : null);
+    final current = source;
+    if (registrationFactory != null) return registrationFactory;
+    if (current case final ActivityRegistrationProvider provider) {
+      return provider.newRegistrationApi;
+    }
+    return null;
   }
+
   final bool isOperator;
 
   /// Same colors as this group's card on the groups home.
@@ -237,11 +243,16 @@ class GroupHome extends StatelessWidget {
                         text: '소모임 창설',
                         onTap: effectiveRegistrationFactory == null
                             ? () => _preview(context, '소모임 창설')
-                            : () => Navigator.of(context).push<String>(MaterialPageRoute(
-                                builder: (_) => CreateActivityScreen(
-                                  api: effectiveRegistrationFactory!(), groupId: groupId!,
-                                  themeColor: themeColor ?? 'mint', ownsApi: true),
-                              )),
+                            : () => Navigator.of(context).push<String>(
+                                MaterialPageRoute(
+                                  builder: (_) => CreateActivityScreen(
+                                    api: effectiveRegistrationFactory!(),
+                                    groupId: groupId!,
+                                    themeColor: themeColor ?? 'mint',
+                                    ownsApi: true,
+                                  ),
+                                ),
+                              ),
                       ),
                     ),
                   ],
