@@ -74,6 +74,26 @@ test('9: leaving a group: sole admin blocked; preferences revoked; unpublished s
   assert.deepEqual(await P.leaveGroup(db,'u0',{groupId:'g'}),{status:'left'});
 });
 
+test('members: admins remove members like leaving, and promote or demote, never the owner or themselves',async()=>{
+  await db.doc('groups/g').set({name:'메이커스',ownerId:'admin',status:'active'});
+  await rejects(P.removeMember(db,'u1',{groupId:'g',userId:'u0'}),'permission-denied');
+  await rejects(P.removeMember(db,'admin',{groupId:'g',userId:'admin'}),'failed-precondition');
+  assert.deepEqual(await P.removeMember(db,'admin',{groupId:'g',userId:'u0'}),{status:'left'});
+  const m=await get('memberships/g_u0');assert.equal(m.status,'left');assert.equal(m.removedBy,'admin');
+  assert.equal((await get('registrations/b_u0')).status,'cancelled');
+  assert.equal((await get('activities/b')).participantCount,1);
+  assert.equal((await get('placementPreferences/g_u0_u1')).active,false);
+  await rejects(P.removeMember(db,'admin',{groupId:'g',userId:'u0'}),'not-found');
+
+  assert.deepEqual(await P.setMemberRole(db,'admin',{groupId:'g',userId:'u1',role:'admin'}),{role:'admin'});
+  assert.equal((await get('memberships/g_u1')).role,'admin');
+  await rejects(P.setMemberRole(db,'u1',{groupId:'g',userId:'admin',role:'member'}),'failed-precondition');
+  await rejects(P.removeMember(db,'u1',{groupId:'g',userId:'admin'}),'failed-precondition');
+  await rejects(P.setMemberRole(db,'admin',{groupId:'g',userId:'u2',role:'owner'}),'invalid-argument');
+  assert.deepEqual(await P.setMemberRole(db,'admin',{groupId:'g',userId:'u1',role:'member'}),{role:'member'});
+  await rejects(P.setMemberRole(db,'u1',{groupId:'g',userId:'u2',role:'admin'}),'permission-denied');
+});
+
 test('9: account deletion needs confirmation and is blocked for a sole admin',async()=>{
   const calls=[];const deps={deleteAuthUser:async u=>calls.push(u)};
   await rejects(P.deleteAccount(db,'u0',{},deps),'invalid-argument');

@@ -3,11 +3,13 @@
 //   deleteFeedback  author removes a review -> summary recomputed, training dataset marked dirty
 //                   (the extraction job re-extracts the activity because its summary changed)
 //   leaveGroup      membership -> left; sole admin blocked; preferences revoked; unpublished sign-ups cancelled
+//   removeMember    an admin does the same for an approved member (never the owner or themselves)
+//   setMemberRole   an admin makes a member admin or back; the owner stays admin, a group keeps one admin
 //   deleteAccount   personal documents deleted; published team records keep 'deleted-user';
 //                   answer copies scrubbed from serverRuns; Firebase Auth user removed last
 const {FieldValue}=require('firebase-admin/firestore');
 const V=require('./validation');
-const {fail,now,membership}=require('./common');
+const {fail,now,membership,requireMember}=require('./common');
 const {writeSummary,summarize}=require('./activity');
 
 const DELETED='deleted-user', DELETED_NAME='삭제된 사용자', DATASET='trainingDatasets/fx1';
@@ -41,12 +43,18 @@ async function leaveGroup(db,uid,d){
     if(!m.data||m.data.status==='left')return {status:'left'};
     if(m.data.role==='admin'&&m.data.status==='approved'&&(await soleAdminGroups(q=>tx.get(q),db,uid)).includes(g))
       fail('failed-precondition','다른 임원진을 정한 뒤에 나갈 수 있어요');
+    return depart(tx,db,g,uid,m);
+  });
+}
+
+// Shared by leaving and being removed: reads first, then writes (transaction rule).
+async function depart(tx,db,g,uid,m,extra={}){
     const [authored,targeted,regs]=await Promise.all([
       tx.get(db.collection('placementPreferences').where('groupId','==',g).where('userId','==',uid)),
       tx.get(db.collection('placementPreferences').where('groupId','==',g).where('targetUserId','==',uid)),
       tx.get(db.collection('registrations').where('groupId','==',g).where('userId','==',uid).where('status','==','submitted'))]);
     const activities=await Promise.all(regs.docs.map(r=>tx.get(db.doc(`activities/${r.data().activityId}`))));
-    tx.update(m.ref,{status:'left',updatedAt:now()});
+    tx.update(m.ref,{status:'left',updatedAt:now(),...extra});
     for(const p of [...authored.docs,...targeted.docs])if(p.data().active)tx.update(p.ref,{active:false,updatedAt:now()});
     // Before publication a leaver simply drops out; after publication the team record stays (re-formation handles it).
     regs.docs.forEach((r,i)=>{
@@ -56,6 +64,33 @@ async function leaveGroup(db,uid,d){
       tx.update(a.ref,{participantCount:FieldValue.increment(-1),updatedAt:now()});
     });
     return {status:'left'};
+}
+
+async function managedMember(tx,db,uid,d){
+  const g=V.noUnderscore(d.groupId),target=V.id(d.userId);
+  if(target===uid)fail('failed-precondition','내 역할은 바꿀 수 없어요. 모임 나가기를 써 주세요');
+  await requireMember(tx,db,g,uid,true);
+  const [group,m]=await Promise.all([tx.get(db.doc(`groups/${g}`)),membership(tx,db,g,target)]);
+  if(!m.data||m.data.status!=='approved')fail('not-found','승인된 부원만 관리할 수 있어요');
+  return {g,target,m,ownerId:group.exists?group.data().ownerId:null};
+}
+
+async function removeMember(db,uid,d){
+  return db.runTransaction(async tx=>{
+    const {g,target,m,ownerId}=await managedMember(tx,db,uid,d);
+    if(target===ownerId)fail('failed-precondition','대표자는 내보낼 수 없어요');
+    return depart(tx,db,g,target,m,{removedBy:uid});
+  });
+}
+
+async function setMemberRole(db,uid,d){
+  V.check(['admin','member'].includes(d.role),'role must be admin or member');
+  return db.runTransaction(async tx=>{
+    const {target,m,ownerId}=await managedMember(tx,db,uid,d);
+    if(m.data.role===d.role)return {role:d.role};
+    if(d.role==='member'&&target===ownerId)fail('failed-precondition','대표자는 항상 운영진이에요');
+    tx.update(m.ref,{role:d.role,updatedAt:now()});
+    return {role:d.role};
   });
 }
 
@@ -122,4 +157,4 @@ async function deleteAccount(db,uid,d,deps){
   return {deleted:true,activities:activityIds.length};
 }
 
-module.exports={deleteFeedback,leaveGroup,deleteAccount,DELETED};
+module.exports={deleteFeedback,leaveGroup,removeMember,setMemberRole,deleteAccount,DELETED};

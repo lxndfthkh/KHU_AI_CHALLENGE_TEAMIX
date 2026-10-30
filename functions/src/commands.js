@@ -29,6 +29,24 @@ async function createActivity(db,uid,d){
   return {activityId:ref.id};
 }
 
+// Operator edit of an open (recruiting) activity. Capacity can't drop below
+// the people already signed up, and the team size can't exceed capacity.
+async function updateActivity(db,uid,d){
+  const patch=V.activityPatch(d);
+  return db.runTransaction(async tx=>{
+    const a=await loadActivity(tx,db,d.activityId);
+    await requireMember(tx,db,a.data.groupId,uid,true);
+    if(a.data.status!=='recruiting')fail('failed-precondition','모집 중인 소모임만 수정할 수 있어요');
+    const capacity=patch.capacity??a.data.capacity,size=patch.targetTeamSize??a.data.targetTeamSize;
+    if(capacity<a.data.participantCount)fail('failed-precondition','이미 신청한 인원보다 정원을 줄일 수 없어요');
+    if(size>capacity)fail('invalid-argument','팀당 인원은 모집 정원보다 클 수 없어요');
+    const update={...patch,updatedAt:now()};
+    if('deadlineAt' in patch)update.deadlineAt=Timestamp.fromMillis(patch.deadlineAt);
+    tx.update(a.ref,update);
+    return {activityId:a.ref.id};
+  });
+}
+
 async function registrationContext(tx,db,uid,d,states=['recruiting']){
   const a=await loadActivity(tx,db,d.activityId);
   await requireMember(tx,db,a.data.groupId,uid);
@@ -109,5 +127,5 @@ async function revokePlacementPreference(db,uid,d){
   });
 }
 
-module.exports={CommandError,createActivity,submitRegistration,updateRegistration,cancelRegistration,
+module.exports={CommandError,createActivity,updateActivity,submitRegistration,updateRegistration,cancelRegistration,
   setPlacementPreference,revokePlacementPreference};

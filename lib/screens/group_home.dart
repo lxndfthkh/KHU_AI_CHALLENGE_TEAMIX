@@ -21,6 +21,7 @@ class GroupHome extends StatelessWidget {
     this.palette = GroupCardPalette.defaultJoined,
     this.onIssueInvite,
     this.onOpenJoinRequests,
+    this.onOpenMembers,
     this.groupId,
     this.themeColor,
     this.activitiesSource,
@@ -59,6 +60,9 @@ class GroupHome extends StatelessWidget {
 
   /// Opens the real join request list; null keeps the demo notice.
   final VoidCallback? onOpenJoinRequests;
+
+  /// Opens the real member management; null keeps the demo notice.
+  final VoidCallback? onOpenMembers;
   void _detail(BuildContext context, DemoSubgroup subgroup) {
     Navigator.of(context).push<void>(
       MaterialPageRoute<void>(
@@ -282,7 +286,7 @@ class GroupHome extends StatelessWidget {
                       child: _Action(
                         icon: Icons.list,
                         text: '부원 관리',
-                        onTap: () => _preview(context, '부원 관리'),
+                        onTap: onOpenMembers ?? () => _preview(context, '부원 관리'),
                       ),
                     ),
                     const SizedBox(width: 8),

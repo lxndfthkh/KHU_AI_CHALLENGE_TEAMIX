@@ -30,13 +30,15 @@ const callable=fn=>onCall({region},async req=>{
 });
 
 // createGroup, invitations, requestJoin and approve/reject run in the app under firestore.rules (main).
-for(const name of ['createActivity','submitRegistration','updateRegistration','cancelRegistration',
+for(const name of ['createActivity','updateActivity','submitRegistration','updateRegistration','cancelRegistration',
   'setPlacementPreference','revokePlacementPreference'])exports[name]=callable(C[name]);
 for(const name of ['setLearningConsent','startActivity','endActivity','submitFeedback','closeFeedback'])exports[name]=callable(A[name]);
 // Service admin only (custom claim admin: true), checked inside each command.
 for(const name of ['approveModel','activateModel','deactivateModel'])exports[name]=callable(M[name]);
 exports.deleteFeedback=callable(P.deleteFeedback);
 exports.leaveGroup=callable(P.leaveGroup);
+exports.removeMember=callable(P.removeMember);
+exports.setMemberRole=callable(P.setMemberRole);
 exports.deleteAccount=callable((db,uid,d)=>P.deleteAccount(db,uid,d,{deleteAuthUser:u=>getAuth().deleteUser(u)}));
 
 exports.closeExpiredFeedback=onSchedule({region,schedule:'every 60 minutes'},async()=>{

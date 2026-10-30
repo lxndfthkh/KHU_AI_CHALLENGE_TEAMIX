@@ -8,6 +8,7 @@ import '../models/activity.dart';
 import '../theme.dart';
 import '../widgets/my_team_card.dart';
 import 'activity_feedback_flow.dart';
+import 'edit_activity_screen.dart';
 import 'formation_screen.dart';
 import 'group_card_palette.dart';
 import 'matching_settings_screen.dart';
@@ -29,6 +30,7 @@ class SubgroupDetailScreen extends StatelessWidget {
     this.lifecycle,
     this.feedbackAction,
     this.onCancelRegistration,
+    this.onEditActivity,
   });
 
   final String groupName;
@@ -60,6 +62,9 @@ class SubgroupDetailScreen extends StatelessWidget {
   /// cancelRegistration; null when it's no longer allowed (after publish).
   final VoidCallback? onCancelRegistration;
 
+  /// Opens the edit screen (operators, while recruiting); null otherwise.
+  final VoidCallback? onEditActivity;
+
   Widget _applyButton(String label, VoidCallback? onPressed) => FilledButton(
     style: FilledButton.styleFrom(
       backgroundColor: teamixAddBackground,
@@ -73,6 +78,28 @@ class SubgroupDetailScreen extends StatelessWidget {
   void _pending(BuildContext context, String feature) {
     ScaffoldMessenger.of(context)
         .showSnackBar(SnackBar(content: Text('$feature 기능은 준비 중이에요.')));
+  }
+
+  /// Real subgroups route menu items to the screens that do them; demo
+  /// subgroups keep the "준비 중" notice.
+  void _menuAction(BuildContext context, String item) {
+    if (activity == null) return _pending(context, item);
+    void tell(String text) => ScaffoldMessenger.of(context)
+        .showSnackBar(SnackBar(content: Text(text)));
+    switch (item) {
+      case '소모임 정보 수정':
+        onEditActivity == null
+            ? tell('모집 중인 소모임만 수정할 수 있어요.')
+            : onEditActivity!();
+      case '모집 마감하기':
+        onManageFormation == null
+            ? _pending(context, item)
+            : onManageFormation!();
+      case '활동 종료하기':
+        tell('아래 활동 단계에서 활동을 시작하고 종료할 수 있어요.');
+      default:
+        _pending(context, item);
+    }
   }
 
   void _more(BuildContext context) {
@@ -105,7 +132,7 @@ class SubgroupDetailScreen extends StatelessWidget {
                   title: Text(item),
                   onTap: () {
                     Navigator.pop(sheet);
-                    _pending(context, item);
+                    _menuAction(context, item);
                   },
                 ),
               TextButton(
@@ -529,6 +556,16 @@ class _RealSubgroupDetailScreenState extends State<RealSubgroupDetailScreen> {
     }
   }
 
+  void _edit(ActivityBackend backend, ActivityRecord activity) {
+    Navigator.of(context).push<void>(MaterialPageRoute<void>(
+      builder: (_) => EditActivityScreen(
+        activity: activity,
+        palette: widget.palette,
+        onSave: (patch) => backend.updateActivity(activity.id, patch),
+      ),
+    ));
+  }
+
   Future<void> _manageFormation(ActivityBackend backend) async {
     final formation = widget.formationBackend;
     if (formation == null) {
@@ -614,6 +651,10 @@ class _RealSubgroupDetailScreenState extends State<RealSubgroupDetailScreen> {
                 activity: current,
                 palette: widget.palette,
               ),
+        onEditActivity:
+            backend == null || !widget.isOperator || !current.recruiting
+            ? null
+            : () => _edit(backend, current),
         onCancelRegistration:
             backend == null ||
                 current.published ||

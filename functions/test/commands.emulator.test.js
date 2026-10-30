@@ -99,6 +99,21 @@ test('createActivity: admin only; activity, questions and settings/matching cont
   assert.equal(s.teamIds,undefined);
 });
 
+test('updateActivity: admin only, while recruiting, never below current sign-ups',async()=>{
+  const {groupId,code}=await groupWithMembers(2);
+  const {activityId}=await C.createActivity(db,'admin',activityInput(groupId,{capacity:3}));
+  await rejects(C.updateActivity(db,'u0',{activityId,title:'몰래'}),'permission-denied');
+  await C.updateActivity(db,'admin',{activityId,title:'새 해커톤',description:'바뀐 소개',type:'study',capacity:5,targetTeamSize:3});
+  let a=(await db.doc(`activities/${activityId}`).get()).data();
+  assert.equal(a.title,'새 해커톤');assert.equal(a.description,'바뀐 소개');assert.equal(a.type,'study');
+  assert.equal(a.capacity,5);assert.equal(a.targetTeamSize,3);assert.equal(a.status,'recruiting');
+  for(const u of ['u0','u1'])await C.submitRegistration(db,u,{activityId,answers:ANSWERS(1)});
+  await rejects(C.updateActivity(db,'admin',{activityId,capacity:1}),'failed-precondition');
+  await rejects(C.updateActivity(db,'admin',{activityId,targetTeamSize:9}),'invalid-argument');
+  await db.doc(`activities/${activityId}`).update({status:'closed'});
+  await rejects(C.updateActivity(db,'admin',{activityId,title:'마감 후'}),'failed-precondition');
+});
+
 test('registrations: approved members only, answers checked, count once, capacity and deadline enforced',async()=>{
   const {groupId,code}=await groupWithMembers(3);
   const {activityId}=await C.createActivity(db,'admin',activityInput(groupId,{capacity:2}));
