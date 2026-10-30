@@ -7,7 +7,8 @@ import '../services/formation_api.dart';
 /// formation server (algorithm/server_v3.py), which checks roles and versions;
 /// the draft is read back from Firestore (`drafts/{a}`, admin only).
 abstract interface class FormationBackend {
-  Stream<FormationDraft?> draft(String activityId);
+  /// The working draft, null until the first formation run.
+  Stream<FormationDraft?> draft(String groupId, String activityId);
 
   /// userId -> display name for the group's approved members.
   Future<Map<String, String>> memberNames(String groupId);
@@ -28,6 +29,9 @@ abstract interface class FormationBackend {
     String userId,
     String? teamId,
   );
+
+  /// The teams as published in [version], for the operator's overview.
+  Future<List<PublishedTeam>> publishedTeams(String activityId, int version);
 
   /// Roster, settings and draft versions as of now (팀편성흐름 v5 4장).
   /// The review screen keeps the ones it showed and publishes with them.
@@ -86,11 +90,20 @@ class ServerFormationBackend implements FormationBackend {
     '그 사이 신청·설정·초안이 바뀌었어요. 최신 상태로 다시 시도해 주세요.',
   );
 
+  /// A query, not a document listener: the rules refuse reading a draft
+  /// that doesn't exist yet, and that error would end the listener before
+  /// the first AI run writes one. An empty query result is allowed.
   @override
-  Stream<FormationDraft?> draft(String activityId) => _db
-      .doc('drafts/$activityId')
+  Stream<FormationDraft?> draft(String groupId, String activityId) => _db
+      .collection('drafts')
+      .where('groupId', isEqualTo: groupId)
+      .where('activityId', isEqualTo: activityId)
       .snapshots()
-      .map((d) => d.exists ? FormationDraft.fromFirestore(d.data()!) : null);
+      .map(
+        (s) => s.docs.isEmpty
+            ? null
+            : FormationDraft.fromFirestore(s.docs.first.data()),
+      );
 
   @override
   Future<Map<String, String>> memberNames(String groupId) async {
@@ -286,6 +299,19 @@ class ServerFormationBackend implements FormationBackend {
         if (r['status'] == 'STALE') return _stale;
         return const FormationOutcome(true, '수정 초안을 버렸어요. 공개된 팀은 그대로예요.');
       });
+
+  /// Operators read publications (rules); it exists once published.
+  @override
+  Future<List<PublishedTeam>> publishedTeams(
+    String activityId,
+    int version,
+  ) async {
+    final d = await _db.doc('publications/${activityId}_v$version').get();
+    return [
+      for (final t in (d.data()?['teams'] as List?) ?? const [])
+        if (t is Map) PublishedTeam.fromFirestore(t.cast<String, dynamic>()),
+    ];
+  }
 
   @override
   Future<Map<String, Object>> reviewVersions(

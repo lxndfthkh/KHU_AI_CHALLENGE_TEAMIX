@@ -82,8 +82,12 @@ class FakeFormation implements FormationBackend {
   int roster = 1;
 
   @override
-  Stream<FormationDraft?> draft(String activityId) =>
+  Stream<FormationDraft?> draft(String groupId, String activityId) =>
       draftStream.stream.map((d) => _shown = d);
+  List<PublishedTeam> published = const [];
+  @override
+  Future<List<PublishedTeam>> publishedTeams(String a, int version) async =>
+      published;
   @override
   Future<Map<String, Object>> reviewVersions(String g, String a) async => {
     'roster': roster,
@@ -279,6 +283,42 @@ void main() {
     await tester.tap(find.text('팀 공개하기'));
     await tester.pumpAndSettle();
     expect(backend.calls.last, 'publish');
+  });
+
+  testWidgets('공개 후에는 공개된 팀 구성을 보여준다', (tester) async {
+    final backend = FakeFormation()
+      ..published = [
+        PublishedTeam.fromFirestore({
+          'teamId': 'team_1',
+          'members': [
+            {'uid': 'u1', 'displayName': '가나'},
+            {'uid': 'u2', 'displayName': '다라'},
+          ],
+          'size': 2,
+          'commonTimes': ['weekend'],
+        }),
+        const PublishedTeam(teamId: 'team_2', names: ['마바', '사아']),
+      ];
+    await tester.pumpWidget(
+      screen(backend, activityIn('closed', published: 1)),
+    );
+    await tester.pumpAndSettle();
+    backend.draftStream.add(null);
+    await tester.pumpAndSettle();
+    expect(find.text('1팀 · 2명'), findsOneWidget);
+    expect(find.text('가나, 다라'), findsOneWidget);
+    expect(find.text('2팀 · 2명'), findsOneWidget);
+    expect(find.text('마바, 사아'), findsOneWidget);
+  });
+
+  testWidgets('충돌 안내는 팀 ID 대신 팀 이름으로 보여준다', (tester) async {
+    tester.view.physicalSize = const Size(1000, 2400);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
+    final backend = FakeFormation()..problems = ['team_2: 정원 초과'];
+    await tester.pumpWidget(screen(backend, activityIn('closed')));
+    await tester.pumpAndSettle();
+    expect(find.text('· 2팀: 정원 초과'), findsOneWidget);
   });
 
   testWidgets('필수 조건을 못 채운 편성안은 공개할 수 없다', (tester) async {

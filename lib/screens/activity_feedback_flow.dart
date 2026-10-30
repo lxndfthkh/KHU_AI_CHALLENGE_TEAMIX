@@ -17,7 +17,11 @@ Future<void> openFeedback(
   GroupCardPalette palette,
 ) async {
   final messenger = ScaffoldMessenger.of(context);
-  final team = await backend.myTeam(groupId, activity.id).first;
+  // Refused for people with no team view, which also means no team.
+  final team = await backend
+      .myTeam(groupId, activity.id)
+      .first
+      .catchError((Object _) => null);
   if (team == null) {
     messenger.showSnackBar(
       const SnackBar(content: Text('팀에 배정된 참가자만 후기를 쓸 수 있어요.')),
@@ -110,10 +114,26 @@ class _FeedbackActionState extends State<FeedbackAction> {
     widget.activity.id,
   );
 
+  /// Only people on a published team write feedback. Others (e.g. an
+  /// operator who didn't sign up) can't even read a team view: the rules
+  /// refuse it, so an error also means "no team" and hides the button.
+  late final Stream<bool> _onTeam = widget.backend
+      .myTeam(widget.groupId, widget.activity.id)
+      .map((t) => t != null)
+      .handleError((Object _) {});
+
   @override
   Widget build(BuildContext context) {
     final a = widget.activity;
     if (a.status != 'ended') return const SizedBox.shrink();
+    return StreamBuilder<bool>(
+      stream: _onTeam,
+      builder: (context, team) =>
+          team.data == true ? _action(context, a) : const SizedBox.shrink(),
+    );
+  }
+
+  Widget _action(BuildContext context, ActivityRecord a) {
     return StreamBuilder<Map<String, int>?>(
       stream: _mine,
       builder: (context, snapshot) {

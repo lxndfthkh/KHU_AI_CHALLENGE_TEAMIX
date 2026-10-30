@@ -137,6 +137,29 @@ class FormationDraft {
   bool get usable => !discarded && teams.isNotEmpty;
 }
 
+/// One team of `publications/{a}_v{n}` as operators see it after publishing
+/// (the working draft is cleared on publish).
+class PublishedTeam {
+  const PublishedTeam({
+    required this.teamId,
+    required this.names,
+    this.summary = const TeamSummary(),
+  });
+
+  factory PublishedTeam.fromFirestore(Map<String, dynamic> t) => PublishedTeam(
+    teamId: '${t['teamId']}',
+    names: [
+      for (final m in (t['members'] as List?) ?? const [])
+        if (m is Map) m['displayName'] as String? ?? '팀원',
+    ],
+    summary: TeamSummary.fromJson(t),
+  );
+
+  final String teamId;
+  final List<String> names;
+  final TeamSummary summary;
+}
+
 /// `teamViews/{a}_{uid}`: the participant's own published team.
 class MyTeam {
   const MyTeam({
