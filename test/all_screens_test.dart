@@ -2,12 +2,10 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:teamix/data/activity_backend.dart';
 import 'package:teamix/data/firestore_activities_source.dart';
 import 'package:teamix/models/formation.dart';
 import 'package:teamix/screens/activity_feedback_flow.dart';
 import 'package:teamix/screens/feedback_screen.dart';
-import 'package:teamix/screens/feedback_summary_screen.dart';
 import 'package:teamix/screens/formation_screen.dart';
 import 'package:teamix/screens/formation_settings_screen.dart';
 import 'package:teamix/screens/group_card_palette.dart';
@@ -47,26 +45,6 @@ void main() {
     expect(ended.feedbackDaysLeft(DateTime(2030, 2, 1)), 0);
     expect(activity('ended', closed: true).feedbackOpen, isFalse);
     expect(activity('active').feedbackDaysLeft(DateTime(2030)), isNull);
-  });
-
-  test('후기 요약은 3명 이상 팀의 응답 수와 평균을 읽는다', () {
-    final s = FeedbackSummary.fromFirestore({
-      'minRespondents': 3,
-      'teams': {
-        'team_1': {
-          'respondents': 3,
-          'averages': {
-            'overall': 4.33,
-            'schedule': 3.67,
-            'roles': 4,
-            'rejoin': 5,
-          },
-        },
-      },
-    });
-    expect(s.teams['team_1']!.$1, 3);
-    expect(s.teams['team_1']!.$2['overall'], 4.33);
-    expect(s.teams.containsKey('team_2'), isFalse);
   });
 
   test('편성 설정 패치는 서버 내부 형식으로 나간다', () {
@@ -130,47 +108,6 @@ void main() {
     expect(sent.single.$2, isTrue);
   });
 
-  testWidgets('후기 요약: 응답 3명 미만 팀은 숨기고 마감할 수 있다', (tester) async {
-    final summary = StreamController<FeedbackSummary?>.broadcast();
-    addTearDown(summary.close);
-    var closed = false;
-    await tester.pumpWidget(
-      app(
-        FeedbackSummaryScreen(
-          activityTitle: '해커톤',
-          summary: summary.stream,
-          teamIds: const ['team_1', 'team_2'],
-          onClose: () async => closed = true,
-        ),
-      ),
-    );
-    summary.add(
-      FeedbackSummary.fromFirestore({
-        'teams': {
-          'team_1': {
-            'respondents': 3,
-            'averages': {
-              'overall': 4.33,
-              'schedule': 3.0,
-              'roles': 4.0,
-              'rejoin': 5.0,
-            },
-          },
-        },
-      }),
-    );
-    await tester.pumpAndSettle();
-    expect(find.text('1팀 · 응답 3명'), findsOneWidget);
-    expect(find.text('4.3'), findsOneWidget);
-    expect(find.text('2팀 · 3명 이상 응답하면 보여요'), findsOneWidget);
-
-    await tester.tap(find.text('후기 마감하기'));
-    await tester.pumpAndSettle();
-    await tester.tap(find.text('마감하기'));
-    await tester.pumpAndSettle();
-    expect(closed, isTrue);
-  });
-
   Future<void> panel(WidgetTester tester, FakeBackend b, ActivityRecord a) =>
       tester.pumpWidget(
         app(
@@ -184,7 +121,7 @@ void main() {
         ),
       );
 
-  testWidgets('활동 단계: 공개 후 시작, 진행 중 종료, 종료 후 요약', (tester) async {
+  testWidgets('활동 단계: 공개 후 시작, 진행 중 종료, 종료 후 후기 마감', (tester) async {
     final b = FakeBackend();
     await panel(tester, b, activity('closed'));
     expect(find.byType(FilledButton), findsNothing);
@@ -208,9 +145,20 @@ void main() {
       b,
       activity('ended', published: 1, endedAt: DateTime.now()),
     );
-    await tester.tap(find.text('후기 요약 · 마감'));
+    await tester.tap(find.text('후기 마감하기'));
     await tester.pumpAndSettle();
-    expect(find.byType(FeedbackSummaryScreen), findsOneWidget);
+    await tester.tap(find.text('확인'));
+    await tester.pumpAndSettle();
+    expect(b.calls, ['start', 'end', 'closeFeedback']);
+
+    // Closed feedback: no action left, and no summary screen exists.
+    await panel(
+      tester,
+      b,
+      activity('ended', published: 1, endedAt: DateTime.now(), closed: true),
+    );
+    expect(find.byType(OutlinedButton), findsNothing);
+    expect(find.text('후기가 마감됐어요.'), findsOneWidget);
   });
 
   testWidgets('후기 진입: 팀원만, 쓴 뒤에는 수정하기', (tester) async {

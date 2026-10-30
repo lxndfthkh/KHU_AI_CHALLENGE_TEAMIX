@@ -87,7 +87,6 @@ class FakeBackend implements ActivityBackend {
 
   final calls = <String>[];
   final feedback = StreamController<Map<String, int>?>.broadcast();
-  final summary = StreamController<FeedbackSummary?>.broadcast();
   final consent = StreamController<bool>.broadcast();
   @override
   Future<void> startActivity(String id) async => calls.add('start');
@@ -100,11 +99,6 @@ class FakeBackend implements ActivityBackend {
   @override
   Future<void> submitFeedback(String id, Map<String, int> scores) async =>
       calls.add('feedback $scores');
-  @override
-  Stream<FeedbackSummary?> feedbackSummary(String id) => summary.stream;
-  @override
-  Future<List<String>> publishedTeamIds(String id, int v) async =>
-      ['team_1', 'team_2'];
   @override
   Stream<bool> learningConsent() => consent.stream;
   @override

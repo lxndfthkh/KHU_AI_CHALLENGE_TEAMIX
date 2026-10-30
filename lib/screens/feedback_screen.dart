@@ -167,7 +167,7 @@ class _FeedbackScreenState extends State<FeedbackScreen> {
               ),
             ),
             const Text(
-              '개별 점수는 운영진도 볼 수 없어요. 3명 이상 응답한 팀의 평균만 공유돼요.',
+              '개별 점수는 운영진도 볼 수 없어요. 팀 편성을 개선하는 데만 쓰여요.',
               style: TextStyle(fontSize: 11, color: teamixMuted),
             ),
             const SizedBox(height: 16),
