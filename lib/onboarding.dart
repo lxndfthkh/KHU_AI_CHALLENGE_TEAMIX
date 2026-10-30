@@ -8,6 +8,7 @@ import 'data/formation_backend.dart';
 import 'data/firestore_group_writer.dart';
 import 'data/firestore_groups_source.dart';
 import 'data/firestore_invitations.dart';
+import 'data/firestore_pending_join.dart';
 import 'data/group_admin.dart';
 import 'data/group_repository.dart';
 import 'data/user_profile.dart';
@@ -705,6 +706,9 @@ class _EntryScreenState extends State<EntryScreen> {
             groupAdmin: uid == null ? null : groupAdmin,
             activityBackend: uid == null ? null : backendFor(uid),
             formationBackend: uid == null ? null : formation,
+            pendingJoins: uid == null
+                ? null
+                : FirestorePendingJoins(FirebaseFirestore.instance, uid),
           );
 
       content = uid == null
