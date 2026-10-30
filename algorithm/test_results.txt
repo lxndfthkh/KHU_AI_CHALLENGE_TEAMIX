@@ -33,8 +33,14 @@ test_single_team_and_all_singletons (test_engine.EngineTests.test_single_team_an
 test_unknown_mode_rejected (test_engine.EngineTests.test_unknown_mode_rejected) ... ok
 test_verifier_rejects_invalid_assignment (test_engine.EngineTests.test_verifier_rejects_invalid_assignment) ... ok
 test_weights_times_ten_same_result (test_engine.EngineTests.test_weights_times_ten_same_result) ... ok
+test_existing_teams_filled_and_checked (test_setup.SetupTests.test_existing_teams_filled_and_checked) ... ok
+test_generates_teams_from_count_and_max (test_setup.SetupTests.test_generates_teams_from_count_and_max) ... ok
+test_no_max_means_uncapped (test_setup.SetupTests.test_no_max_means_uncapped) ... ok
+test_participants_over_total_invites (test_setup.SetupTests.test_participants_over_total_invites) ... ok
+test_setup_values_validated (test_setup.SetupTests.test_setup_values_validated) ... ok
+test_without_setup_unchanged (test_setup.SetupTests.test_without_setup_unchanged) ... ok
 
 ----------------------------------------------------------------------
-Ran 35 tests in 15.377s
+Ran 41 tests in 15.514s
 
 OK

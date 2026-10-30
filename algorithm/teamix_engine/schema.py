@@ -11,6 +11,7 @@ LABELS = {"time": "가능 시간", "role": "역할", "experience": "경험 수�
           "interest": "관심 분야", "size": "인원 균형"}
 # 편성학습 v3 15장 ✅ 보정 범위
 MULTIPLIER_MIN, MULTIPLIER_MAX = F(1, 2), F(2)
+MAX_TEAMS = 100
 
 
 class InputError(ValueError):
@@ -51,13 +52,58 @@ def _valid_answer(q, v, categories):
             and len(v) == len(set(v)) and set(v) <= set(categories[q]))
 
 
+def _positive(v, nullable=False):
+    return (nullable and v is None) or (type(v) is int and v >= 1)
+
+
+def apply_setup(setup, teams):
+    """편성 설정 ①: 팀 수 · 팀별 최대 인원 · 소모임 총 초대 인원.
+
+    teams가 없으면 team_1 … team_K를 만들고, 있으면 개수를 맞춘다.
+    팀별 최대 인원은 정원이 비어 있는 팀에 채우고, 그보다 큰 정원은 허용하지 않는다.
+    """
+    if not isinstance(setup, dict) or set(setup) - {"team_count", "max_per_team", "total_invites"}:
+        raise InputError("편성 설정은 team_count, max_per_team, total_invites만 받습니다.")
+    k = setup.get("team_count")
+    per_team = setup.get("max_per_team")
+    total = setup.get("total_invites")
+    if not _positive(k) or k > MAX_TEAMS:
+        raise InputError(f"팀 수는 1~{MAX_TEAMS} 사이의 정수여야 합니다.")
+    if not _positive(per_team, nullable=True):
+        raise InputError("팀별 최대 인원은 1 이상의 정수 또는 null이어야 합니다.")
+    if not _positive(total, nullable=True):
+        raise InputError("총 초대 인원은 1 이상의 정수 또는 null이어야 합니다.")
+    if total is not None and total < k:
+        raise InputError(f"총 초대 인원({total}명)이 팀 수({k}개)보다 적으면 빈 팀이 생깁니다.")
+    if total is not None and per_team is not None and total > k*per_team:
+        raise InputError(f"총 초대 인원({total}명)이 팀 수 × 팀별 최대 인원"
+                         f"({k}×{per_team}={k*per_team}명)보다 많습니다.")
+
+    if not teams:
+        teams = [{"id": f"team_{i}", "capacity": per_team} for i in range(1, k+1)]
+    elif len(teams) != k:
+        raise InputError(f"팀 수({k}개)와 팀 목록({len(teams)}개)이 다릅니다.")
+    else:
+        teams = [dict(t) for t in teams]
+        for t in teams:
+            c = t.get("capacity")
+            if c is None:
+                t["capacity"] = per_team
+            elif per_team is not None and type(c) is int and c > per_team:
+                raise InputError(f"{t['id']}의 정원({c}명)이 팀별 최대 인원({per_team}명)보다 큽니다.")
+    return teams, {"team_count": k, "max_per_team": per_team, "total_invites": total}
+
+
 def normalize(raw):
     """Validate input shape. Missing answers are recorded for precheck, never imputed."""
     mode = raw.get("mode", "initial")
     if mode not in ("initial", "republish"):
         raise InputError("mode는 initial 또는 republish입니다.")
     people = sorted(raw.get("participants", []), key=lambda p: p["id"])
-    teams = sorted(raw.get("teams", []), key=lambda t: t["id"])
+    teams, setup = raw.get("teams", []), None
+    if raw.get("setup") is not None:
+        teams, setup = apply_setup(raw["setup"], teams)
+    teams = sorted(teams, key=lambda t: t["id"])
     if not people or not teams:
         raise InputError("참가자와 팀은 각각 1개 이상 필요합니다.")
     ids = [p["id"] for p in people]
@@ -198,7 +244,7 @@ def normalize(raw):
     if type(seed) is not int or not 0 <= seed <= 2147483647:
         raise InputError("시드가 올바르지 않습니다.")
 
-    s = dict(mode=mode, people=people, teams=teams, ids=ids, tids=tids, capacity=capacity,
+    s = dict(mode=mode, people=people, teams=teams, ids=ids, tids=tids, capacity=capacity, setup=setup,
              selected=selected, priority=priority,
              weights=weights(priority, multipliers), model_id=learning.get("model_id"),
              categories=categories, method=method, missing=missing,
@@ -259,6 +305,9 @@ def precheck(s):
     caps = s["capacity"]
     if n < k:
         add("team_count", f"참가자는 {n}명인데 팀은 {k}개입니다. 팀 수를 줄여 주세요.")
+    total = (s["setup"] or {}).get("total_invites")
+    if total is not None and n > total:
+        add("invite_total", f"참가자는 {n}명인데 소모임 총 초대 인원은 {total}명입니다.")
     # 3-1: 정원이 없는 팀이 하나라도 있으면 전체 정원 검사를 건너뜀
     if all(c is not None for c in caps.values()) and sum(caps.values()) < n:
         add("capacity_total", f"참가자는 {n}명인데 전체 최대 정원은 {sum(caps.values())}명입니다.")

@@ -436,6 +436,8 @@ def solve(raw, cache=None, stage_runner=run_stage):
     try:
         s = normalize(raw)
         public.update(kind=s["kind"], weights_used=s["weights"], model_id=s["model_id"])
+        if s["setup"]:
+            public["setup"] = s["setup"]
         internal.update(seed=s["seed"], workers=1, max_deterministic_time=s["limit"],
                         versions=s["versions"], weights_used=s["weights"])
         issues = precheck(s)

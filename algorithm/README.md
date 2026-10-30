@@ -30,7 +30,8 @@ python -m unittest discover -s tests -v
 |---|---|
 | `mode` | `initial`(공개 전) 또는 `republish`(공개 후) |
 | `participants` | `{id, answers}`. 답변 키 `role`(단일), `time`·`interest`(복수, 최소 1개), `experience`(1~5) |
-| `teams` | `{id, capacity}`. `capacity: null` = 정원 없음(3-1). 엔진은 정원을 바꾸지 않음 |
+| `setup` | 편성 설정 ① `{team_count, max_per_team, total_invites}`. 생략 가능. 아래 "편성 설정" 참고 |
+| `teams` | `{id, capacity}`. `capacity: null` = 정원 없음(3-1). 엔진은 정원을 바꾸지 않음. `setup`이 있으면 생략 가능 |
 | `selected_questions`, `priority`, `method` | 사용할 질문, 우선순위(`size` 포함, 기본 순서는 5장), `balanced`/`similar` |
 | `required_roles`, `require_common_time` | 추가 필수 조건 |
 | `fixed` | 수동 고정 `{participant, team}` 목록 |
@@ -54,7 +55,13 @@ python -m unittest discover -s tests -v
 - **증명 기록(9-3):** `stage_proof = {pub, quality, draft}`. 최종 후보 값이 그 단계의 증명된 최적값과 같을 때만 `true`. 모두 `true`일 때만 OPTIMAL입니다.
 - **안내 문구:** 기존 참가자 이동 0명이면 9-2 안내. 공개 이동 최소가 증명되지 않으면 "탐색한 후보 중 이동이 가장 적은 안입니다." 삭제 팀 소속 이동은 "팀 삭제로 인한 이동 n명"으로 따로 표시합니다.
 - **결과 상태(11장):** OPTIMAL / FEASIBLE / INFEASIBLE / LIMIT_NO_CANDIDATE / ERROR. 탐색 한도로 끝나면 후보를 보존하고, 솔버 예외·MODEL_INVALID·편성/진단 모델 불일치·독립 검증 실패·뒤 단계의 모순은 **적용 차단(ERROR)** 합니다(11-1). ERROR는 원인 없이 "처리 중 오류가 발생했습니다."만 공개합니다.
-- **사전 검사(12-1):** 9종 전부(참가자 < 팀, 전체 정원(정원 없는 팀이 있으면 생략), 고정 > 정원, 동일인 고정 중복, 역할 희망자 부족, 선택 범위 정원 부족, 응답 누락(질문별 인원), 삭제 팀 수동 고정, 새 팀이 범위 밖). 추가로 범위 밖 빈 팀을 안내합니다.
+- **사전 검사(12-1):** 9종 전부(참가자 < 팀, 전체 정원(정원 없는 팀이 있으면 생략), 고정 > 정원, 동일인 고정 중복, 역할 희망자 부족, 선택 범위 정원 부족, 응답 누락(질문별 인원), 삭제 팀 수동 고정, 새 팀이 범위 밖). 추가로 범위 밖 빈 팀과, `setup.total_invites`보다 참가자가 많은 경우(`invite_total`)를 안내합니다.
+- **편성 설정 `setup`:** 임원진이 처음에 정하는 세 값입니다.
+  - `team_count`: 팀 수(1~100, 필수)
+  - `max_per_team`: 팀별 최대 인원(1 이상, `null` = 제한 없음)
+  - `total_invites`: 소모임 총 초대 인원(1 이상, `null` = 제한 없음)
+
+  `teams`가 없으면 `team_1 … team_K`를 만들고 정원을 `max_per_team`으로 둡니다. `teams`가 있으면 개수가 `team_count`와 같아야 하고, 정원이 `null`인 팀에는 `max_per_team`을 채우며, 그보다 큰 정원은 입력 오류입니다. 설정 자체의 모순(`total_invites < team_count`, `total_invites > team_count × max_per_team`)은 참가자와 상관없이 입력 오류(ERROR)로 막습니다. 참가자가 `total_invites`를 넘는 것은 사전 검사 충돌(INFEASIBLE)입니다. 입력 검사를 통과하면 결과의 `public.setup`에 받은 값을 그대로 돌려줍니다.
 - **충돌 진단(10-5, 12-2):** 필수 조건만 있는 진단 모델에서 정원·수동 고정·필수 역할·재편성 범위·공통 시간에 가정 리터럴을 붙여 충돌 집합을 구하고, 진단 한도 안에서 하나씩 빼 보며 불필요한 조건을 지웁니다. 비공개 선호는 넣지 않습니다.
 - **재현성(10-4):** 작업자 1, 시드 고정, ID 정렬, 결정적 연산량 한도. `solve(..., cache=dict)`로 같은 실행 입력(`run_id` 제외) 결과를 재사용합니다. ERROR는 저장하지 않습니다.
 - **노출 금지(7장):** `public`에 V·P·J_int·비공개 선호 관련 값과 오류 원인이 없습니다. 비공개 선호 입력 오류도 일반 오류로만 안내합니다.
