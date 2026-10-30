@@ -1,6 +1,7 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 
 import '../models/group_summary.dart';
+import 'firestore_activities_source.dart';
 
 /// Reads the groups home in the order of docs/FIRESTORE.md:
 /// own memberships first, then each approved group and its recruiting
@@ -10,6 +11,7 @@ class FirestoreGroupsSource {
 
   final FirebaseFirestore _db;
   final String uid;
+  late final ActivitiesSource activitiesSource = FirestoreActivitiesSource(_db);
 
   static const activityPreviewLimit = 2;
 
@@ -28,7 +30,8 @@ class FirestoreGroupsSource {
     final groupId = membership['groupId'];
     if (membership['status'] == 'pending') return _pendingSummary(membership);
     if (membership['status'] != 'approved' || groupId is! String) {
-      return GroupSummary.fromFirestore(uid: uid, membership: membership);
+      return GroupSummary.fromFirestore(uid: uid, membership: membership,
+        activitiesSource: activitiesSource);
     }
     try {
       final results = await Future.wait([
@@ -47,6 +50,7 @@ class FirestoreGroupsSource {
         uid: uid,
         membership: membership,
         group: group.data(),
+        activitiesSource: activitiesSource,
         activityTitles: [
           for (final doc in activities.docs)
             if (doc.data()['title'] case final String title) title,
@@ -54,7 +58,8 @@ class FirestoreGroupsSource {
       );
     } on FirebaseException {
       // One unreadable group (e.g. approval just revoked) shouldn't hide the rest.
-      return GroupSummary.fromFirestore(uid: uid, membership: membership);
+      return GroupSummary.fromFirestore(uid: uid, membership: membership,
+        activitiesSource: activitiesSource);
     }
   }
 

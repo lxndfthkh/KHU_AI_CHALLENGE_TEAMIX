@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../data/group_admin.dart';
+import '../data/firestore_activities_source.dart';
 import '../models/group_summary.dart';
 import '../theme.dart';
 import 'group_card_palette.dart';
@@ -19,6 +20,7 @@ class MyGroupsHome extends StatelessWidget {
     this.busy = false,
     this.onToggleDemoGroups,
     this.groupAdmin,
+    this.activitiesSource,
   });
 
   /// `null` while the first snapshot is loading.
@@ -34,6 +36,7 @@ class MyGroupsHome extends StatelessWidget {
   /// Issues an invite code for a group ID; null in demo mode.
   /// Firestore operator actions (invites, join requests); null in demo mode.
   final GroupAdmin? groupAdmin;
+  final ActivitiesSource? activitiesSource;
 
   void _add(BuildContext context) {
     showModalBottomSheet<void>(
@@ -168,6 +171,9 @@ class MyGroupsHome extends StatelessWidget {
       MaterialPageRoute<void>(
         builder: (home) => GroupHome(
           groupName: group.name,
+          groupId: group.groupId,
+          themeColor: group.themeColor,
+          activitiesSource: activitiesSource ?? group.activitiesSource,
           isOperator: group.isOperator,
           palette: palette,
           onIssueInvite: admin == null
@@ -194,10 +200,9 @@ class MyGroupsHome extends StatelessWidget {
   }
 
   Widget _card(BuildContext context, GroupSummary group, int joinedIndex) {
-    final palette = GroupCardPalette.forGroup(
-      joinedIndex,
-      isPending: group.pending,
-    );
+    final palette = group.pending ? GroupCardPalette.pending
+        : GroupCardPalette.fromTheme(group.themeColor,
+            fallback: GroupCardPalette.forGroup(joinedIndex));
 
     return _GroupCard(
       name: group.name,

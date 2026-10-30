@@ -1,3 +1,5 @@
+import '../data/firestore_activities_source.dart';
+
 /// One card on the groups home, built from `memberships/{groupId}_{uid}`
 /// plus, for approved members, `groups/{groupId}` and recruiting activities.
 class GroupSummary {
@@ -7,6 +9,7 @@ class GroupSummary {
     required this.role,
     required this.status,
     this.isOwner = false,
+    this.activitiesSource,
     this.themeColor,
     this.activityTitles = const <String>[],
   });
@@ -20,6 +23,7 @@ class GroupSummary {
     required Map<String, dynamic> membership,
     Map<String, dynamic>? group,
     List<String> activityTitles = const <String>[],
+    ActivitiesSource? activitiesSource,
   }) {
     final status = membership['status'] as String? ?? '';
     final groupName = group?['name'];
@@ -35,9 +39,11 @@ class GroupSummary {
       isOwner: group?['ownerId'] == uid,
       themeColor: group?['themeColor'] as String?,
       activityTitles: activityTitles,
+      activitiesSource: activitiesSource,
     );
   }
 
+  final ActivitiesSource? activitiesSource;
   final String groupId;
   final String name;
 
