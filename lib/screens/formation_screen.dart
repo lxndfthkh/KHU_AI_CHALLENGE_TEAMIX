@@ -110,7 +110,7 @@ class _FormationScreenState extends State<FormationScreen> {
       final first = _activity == null;
       setState(() => _activity = a);
       if (first) {
-        _draft = widget.backend.draft(a.id);
+        _draft = widget.backend.draft(widget.groupId, a.id);
         try {
           _settingsSub = widget.backend.settings(a.id).listen((s) {
             if (mounted && s != null) {
@@ -238,6 +238,64 @@ class _FormationScreenState extends State<FormationScreen> {
     ),
   );
 
+  /// Published teams, re-read when the published version changes.
+  Future<List<PublishedTeam>>? _published;
+  int? _publishedVersion;
+
+  List<Widget> _publishedTeams(ActivityRecord a) {
+    final version = a.publishedVersion!;
+    if (_publishedVersion != version) {
+      _publishedVersion = version;
+      _published = widget.backend.publishedTeams(a.id, version);
+    }
+    return [
+      FutureBuilder<List<PublishedTeam>>(
+        future: _published,
+        builder: (context, snapshot) {
+          if (snapshot.hasError) {
+            return const Text(
+              '공개된 팀을 불러오지 못했어요.',
+              style: TextStyle(fontSize: 12, color: teamixMuted),
+            );
+          }
+          final teams = snapshot.data;
+          if (teams == null) return const SizedBox.shrink();
+          return Column(children: [for (final t in teams) _publishedTeam(t)]);
+        },
+      ),
+    ];
+  }
+
+  Widget _publishedTeam(PublishedTeam t) => _card(
+    child: Column(
+      key: ValueKey('published-${t.teamId}'),
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          '${teamLabel(t.teamId)} · ${t.names.length}명',
+          style: const TextStyle(
+            fontSize: 15,
+            fontWeight: FontWeight.w800,
+            color: ink,
+          ),
+        ),
+        for (final f in _facts(t.summary))
+          Text(f, style: TextStyle(fontSize: 11, color: widget.palette.accent)),
+        const SizedBox(height: 6),
+        Text(
+          t.names.join(', '),
+          style: const TextStyle(fontSize: 13, color: ink),
+        ),
+      ],
+    ),
+  );
+
+  /// Server messages name teams by ID (`team_2: 정원 초과`); show `2팀`.
+  static String _readable(String message) => message.replaceAllMapped(
+    RegExp(r'team_\d+'),
+    (m) => teamLabel(m.group(0)!),
+  );
+
   Widget _problems(String title, List<String> items) => _card(
     color: teamixAddBackground,
     child: Column(
@@ -254,7 +312,10 @@ class _FormationScreenState extends State<FormationScreen> {
         for (final p in items)
           Padding(
             padding: const EdgeInsets.only(top: 4),
-            child: Text('· $p', style: const TextStyle(fontSize: 12)),
+            child: Text(
+              '· ${_readable(p)}',
+              style: const TextStyle(fontSize: 12),
+            ),
           ),
       ],
     ),
@@ -391,21 +452,22 @@ class _FormationScreenState extends State<FormationScreen> {
     );
   }
 
+  List<String> _facts(TeamSummary s) => [
+    if (s.commonTimes.isNotEmpty)
+      '공통 시간 ${s.commonTimes.map((t) => _label('time', t)).join(', ')}',
+    if (s.roleCounts.values.any((n) => n > 0))
+      '역할 ${[for (final e in s.roleCounts.entries)
+        if (e.value > 0) '${_label('role', e.key)} ${e.value}'].join(' · ')}',
+    if (s.experienceMean != null)
+      '경험 평균 ${s.experienceMean!.toStringAsFixed(1)}',
+  ];
+
   Widget _team(
     FormationDraft draft,
     TeamDraft team, {
     bool selectable = false,
   }) {
-    final s = team.summary;
-    final facts = [
-      if (s.commonTimes.isNotEmpty)
-        '공통 시간 ${s.commonTimes.map((t) => _label('time', t)).join(', ')}',
-      if (s.roleCounts.values.any((n) => n > 0))
-        '역할 ${[for (final e in s.roleCounts.entries)
-          if (e.value > 0) '${_label('role', e.key)} ${e.value}'].join(' · ')}',
-      if (s.experienceMean != null)
-        '경험 평균 ${s.experienceMean!.toStringAsFixed(1)}',
-    ];
+    final facts = _facts(team.summary);
     return _card(
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -609,8 +671,10 @@ class _FormationScreenState extends State<FormationScreen> {
                   ),
             child: const Text('수정 초안 버리기 · 공개된 팀은 그대로'),
           ),
-      ] else if (a.published)
+      ] else if (a.published) ...[
         _step('공개된 팀', '팀이 공개돼 있어요. 바꾸려면 다시 편성해 주세요.'),
+        ..._publishedTeams(a),
+      ],
     ];
   }
 

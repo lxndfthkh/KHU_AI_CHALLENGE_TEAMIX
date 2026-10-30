@@ -175,6 +175,13 @@ void main() {
         ),
       ),
     );
+    // No team (e.g. an operator who didn't sign up): no button at all.
+    b.team.add(null);
+    b.feedback.add(null);
+    await tester.pumpAndSettle();
+    expect(find.textContaining('후기 남기기'), findsNothing);
+
+    b.team.add(const MyTeam(teamId: 'team_1', members: []));
     b.feedback.add(null);
     await tester.pumpAndSettle();
     expect(find.textContaining('후기 남기기 · D-'), findsOneWidget);
