@@ -162,6 +162,7 @@ class _LearningScreenState extends State<LearningScreen> {
     ),
     builder: (context, names) => StreamBuilder<FormationDraft?>(
       stream: _drafts[target.activityId] ??= widget.formation!.draft(
+        target.groupId,
         target.activityId,
       ),
       builder: (context, snapshot) {
