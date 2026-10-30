@@ -30,8 +30,8 @@ import 'widgets/onboarding_widgets.dart';
 
 export 'theme.dart' show ink, coral, mint, butter, lilac;
 
-// Auth, the groups home, group creation, invite codes and join approval are
-// real; subgroups and team formation still use demo data.
+// Every flow is connected to Firebase and the formation server; demoMode
+// shows the sample groups without signing in.
 class TeamixApp extends StatelessWidget {
   const TeamixApp({super.key, this.demoMode = false, this.showEmpty = false});
 
@@ -759,7 +759,7 @@ class _EntryScreenState extends State<EntryScreen> {
                 children: [
                   OnboardingWidgets(busy: busy).panel(lilac, [
                     const Text(
-                      '개발용 · 인증, 내 모임 목록, 모임 만들기, 초대 코드 참여, 가입 승인은 실제 연결. 소모임·팀 편성은 시연 데이터예요.',
+                      '시연용 서비스예요 · 테스트 계정만 사용해 주세요.',
                       style: TextStyle(fontSize: 12),
                     ),
                   ]),
