@@ -167,9 +167,16 @@ class _EntryScreenState extends State<EntryScreen> {
   /// Signed-in user whose data lives in Firestore; null in demo mode.
   User? get firestoreUser => widget.demoMode ? null : currentUser;
 
-  String profileName(User user) => nickname.text.trim().isNotEmpty
-      ? nickname.text.trim()
-      : user.displayName ?? user.email?.split('@').first ?? '';
+  /// Nickname from this session's sign-up, used until Auth reports the
+  /// display name. Not the nickname field: it may hold another account's
+  /// input after logging out and in.
+  String? signupName;
+
+  String profileName(User user) {
+    final auth = user.displayName?.trim() ?? '';
+    if (auth.isNotEmpty) return auth;
+    return signupName ?? user.email?.split('@').first ?? '';
+  }
 
   Future<void> syncProfile() async {
     final user = firestoreUser;
@@ -354,6 +361,7 @@ class _EntryScreenState extends State<EntryScreen> {
     }
 
     setState(() => busy = true);
+    var signedIn = false;
 
     try {
       if (signup) {
@@ -363,8 +371,9 @@ class _EntryScreenState extends State<EntryScreen> {
           password: password.text,
         );
 
+        signupName = nickname.text.trim();
         try {
-          await result.user?.updateDisplayName(nickname.text.trim());
+          await result.user?.updateDisplayName(signupName);
         } catch (_) {
           if (mounted) toast('계정은 생성됐지만 닉네임 저장에 실패했어요.');
         }
@@ -377,7 +386,7 @@ class _EntryScreenState extends State<EntryScreen> {
 
       password.clear();
       confirmation.clear();
-      if (mounted) route();
+      signedIn = true;
     } on FirebaseAuthException catch (e) {
       if (mounted) {
         toast(
@@ -391,6 +400,9 @@ class _EntryScreenState extends State<EntryScreen> {
     } finally {
       if (mounted) setState(() => busy = false);
     }
+    // Only after busy is cleared: a saved invite link is checked next, and
+    // that check ignores calls made while busy.
+    if (signedIn && mounted) route();
   }
 
   Future<void> resetPassword() async {
@@ -428,8 +440,11 @@ class _EntryScreenState extends State<EntryScreen> {
       activityBackendUid = null;
       formationBackend = null;
       clearInvite();
-      password.clear();
-      confirmation.clear();
+      // The next person on this device starts from empty fields.
+      signupName = null;
+      for (final c in [email, password, confirmation, nickname]) {
+        c.clear();
+      }
       go('welcome');
     } catch (_) {
       if (mounted) toast('로그아웃하지 못했어요.');
