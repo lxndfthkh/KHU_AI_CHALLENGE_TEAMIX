@@ -58,3 +58,6 @@ app.*.map.json
 *.keystore
 key.properties
 node_modules/
+
+# Local credentials from scripts/set_service_admin.cjs
+*.local.txt
