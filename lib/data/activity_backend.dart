@@ -49,6 +49,29 @@ abstract interface class ActivityBackend {
   Future<void> setLearningConsent(bool agreed);
   Future<void> leaveGroup(String groupId);
   Future<void> deleteAccount();
+
+  // 비공개 배치 선호 (편성알고리즘 v3 7장): group-wide, read only by the
+  // author, never shown to operators; used by the next team formation.
+
+  /// Members the caller would rather not be teamed with in this group.
+  Stream<Set<String>> myPlacementPreferences(String groupId);
+
+  /// Approved members other than the caller, to choose from.
+  Future<List<GroupPeer>> groupPeers(String groupId);
+
+  /// The caller's published teammates, for the after-feedback prompt.
+  Future<List<GroupPeer>> teammates(String groupId, String activityId);
+
+  Future<void> setPlacementPreference(String groupId, String targetUserId);
+  Future<void> revokePlacementPreference(String groupId, String targetUserId);
+}
+
+/// Another member of the caller's group, as the caller may see them.
+class GroupPeer {
+  const GroupPeer(this.userId, this.name);
+
+  final String userId;
+  final String name;
 }
 
 /// One `registrations/{a}_{uid}` as an operator sees it.
@@ -225,4 +248,60 @@ class FirebaseActivityBackend implements ActivityBackend {
 
   @override
   Future<void> deleteAccount() => _api.deleteAccount();
+
+  @override
+  Stream<Set<String>> myPlacementPreferences(String groupId) => _db
+      .collection('placementPreferences')
+      .where('groupId', isEqualTo: groupId)
+      .where('userId', isEqualTo: uid)
+      .where('active', isEqualTo: true)
+      .snapshots()
+      .map(
+        (s) => {
+          for (final d in s.docs)
+            if (d.data()['targetUserId'] case final String t) t,
+        },
+      );
+
+  /// Rules let approved members list approved memberships only.
+  @override
+  Future<List<GroupPeer>> groupPeers(String groupId) async {
+    final s = await _db
+        .collection('memberships')
+        .where('groupId', isEqualTo: groupId)
+        .where('status', isEqualTo: 'approved')
+        .get();
+    return [
+      for (final d in s.docs)
+        if (d.data()['userId'] case final String id when id != uid)
+          GroupPeer(id, d.data()['displayName'] as String? ?? '이름 없음'),
+    ]..sort((a, b) => a.name.compareTo(b.name));
+  }
+
+  /// From the caller's own teamView, the same query as [myTeam].
+  @override
+  Future<List<GroupPeer>> teammates(String groupId, String activityId) async {
+    final s = await _db
+        .collection('teamViews')
+        .where('groupId', isEqualTo: groupId)
+        .where('activityId', isEqualTo: activityId)
+        .where('userId', isEqualTo: uid)
+        .get();
+    if (s.docs.isEmpty) return const [];
+    return [
+      for (final m in (s.docs.first.data()['members'] as List?) ?? const [])
+        if (m is Map && m['uid'] is String && m['uid'] != uid)
+          GroupPeer(m['uid'] as String, m['displayName'] as String? ?? '팀원'),
+    ];
+  }
+
+  @override
+  Future<void> setPlacementPreference(String groupId, String targetUserId) =>
+      _api.setPlacementPreference(groupId, targetUserId);
+
+  @override
+  Future<void> revokePlacementPreference(
+    String groupId,
+    String targetUserId,
+  ) => _api.revokePlacementPreference(groupId, targetUserId);
 }

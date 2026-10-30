@@ -12,6 +12,7 @@ import 'create_activity_screen.dart';
 import 'group_card_palette.dart';
 import 'subgroup_detail_screen.dart';
 import 'matching_settings_screen.dart';
+import 'placement_preferences_screen.dart';
 
 /// UI preview only: operator access here is not an authorization decision.
 class GroupHome extends StatelessWidget {
@@ -468,6 +469,55 @@ class GroupHome extends StatelessWidget {
                     ),
                   ),
                 ),
+              if (activityBackend != null && groupId != null) ...[
+                if (isOperator) const SizedBox(height: 8),
+                Material(
+                  key: const ValueKey('placement-preferences-entry'),
+                  color: teamixActionBackground,
+                  borderRadius: BorderRadius.circular(14),
+                  child: InkWell(
+                    borderRadius: BorderRadius.circular(14),
+                    onTap: () => Navigator.of(context).push<void>(
+                      MaterialPageRoute<void>(
+                        builder: (_) => PlacementPreferencesScreen(
+                          groupName: groupName,
+                          groupId: groupId!,
+                          backend: activityBackend!,
+                        ),
+                      ),
+                    ),
+                    child: const Padding(
+                      padding: EdgeInsets.all(14),
+                      child: Row(
+                        children: [
+                          Icon(
+                            Icons.lock_outline,
+                            size: 15,
+                            color: teamixActionForeground,
+                          ),
+                          SizedBox(width: 8),
+                          Text(
+                            '다른 팀이면 좋겠는 사람 · 비공개',
+                            style: TextStyle(
+                              fontSize: 12,
+                              fontWeight: FontWeight.w600,
+                              color: teamixActionForeground,
+                            ),
+                          ),
+                          Spacer(),
+                          Text(
+                            '설정하기 ›',
+                            style: TextStyle(
+                              fontSize: 10,
+                              color: teamixActionForeground,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+              ],
               const SizedBox(height: 22),
               Row(
                 children: [

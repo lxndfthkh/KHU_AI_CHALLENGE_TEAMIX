@@ -118,6 +118,20 @@ class FakeBackend implements ActivityBackend {
   Future<void> leaveGroup(String groupId) async => calls.add('leave');
   @override
   Future<void> deleteAccount() async => calls.add('delete');
+  @override
+  Stream<Set<String>> myPlacementPreferences(String groupId) =>
+      Stream.value(const {});
+  @override
+  Future<List<GroupPeer>> groupPeers(String groupId) async => const [];
+  @override
+  Future<List<GroupPeer>> teammates(String groupId, String activityId) async =>
+      const [];
+  @override
+  Future<void> setPlacementPreference(String groupId, String target) async =>
+      calls.add('prefer $target');
+  @override
+  Future<void> revokePlacementPreference(String groupId, String target) async =>
+      calls.add('unprefer $target');
 }
 
 Widget app(Widget home) => MaterialApp(theme: buildTeamixTheme(), home: home);
