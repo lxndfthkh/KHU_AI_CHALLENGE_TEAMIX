@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 
+import '../data/formation_backend.dart';
 import '../data/learning_admin.dart';
+import '../models/formation.dart';
 import '../theme.dart';
 
 const _criteria = {
@@ -21,9 +23,13 @@ const _statusLabels = {
 /// Service admin: train correction factors from closed feedback, then apply
 /// them to formation or go back to default weights (every b = 1).
 class LearningScreen extends StatefulWidget {
-  const LearningScreen({super.key, required this.admin});
+  const LearningScreen({super.key, required this.admin, this.formation});
 
   final LearningAdmin admin;
+
+  /// Re-forms the chosen subgroup's draft after each demo button so its
+  /// teams follow the weights in use; null hides the demo buttons.
+  final FormationBackend? formation;
 
   @override
   State<LearningScreen> createState() => _LearningScreenState();
@@ -69,6 +75,129 @@ class _LearningScreenState extends State<LearningScreen> {
   }
 
   Future<void> _train() => _run('학습', () => _load(widget.admin.train));
+
+  /// The demo subgroup from algorithm/demo_compare.py when it exists.
+  CompareTarget? _demoTarget(LearningStatus s) =>
+      _target ??
+      s.targets.where((t) => t.activityId == 'mock_compare_act').firstOrNull ??
+      s.targets.firstOrNull;
+
+  /// Re-forms [target] with whatever weights are now in use.
+  Future<void> _reform(CompareTarget target) async {
+    final outcome = await widget.formation!.generate(
+      target.groupId,
+      target.activityId,
+      republish: false,
+    );
+    if (!outcome.ok) throw StateError(outcome.message);
+  }
+
+  /// 학습 전으로: default weights, then the subgroup is formed again.
+  Future<void> _before(CompareTarget target) => _run('학습 전으로', () async {
+    await widget.admin.reset();
+    await _reform(target);
+    await _load(widget.admin.status);
+  });
+
+  /// 학습하기: train, apply a passing model, then form the subgroup again.
+  Future<void> _learn(CompareTarget target) => _run('학습하기', () async {
+    final trained = await widget.admin.train();
+    final run = trained.latest;
+    if (run?.status != 'candidate' || run?.modelId == null) {
+      await _load(() async => trained);
+      throw StateError('no candidate');
+    }
+    await widget.admin.apply(run!.modelId!);
+    await _reform(target);
+    await _load(widget.admin.status);
+  });
+
+  Widget _demo(LearningStatus s) {
+    final target = _demoTarget(s);
+    final busy = _working != null;
+    return _card(
+      color: butter,
+      Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          _title('시연 · 학습 전후로 편성 바꾸기'),
+          Text(
+            target == null
+                ? '신청이 마감된 소모임이 없어요.'
+                : '${target.title}을(를) 지금 값으로 다시 편성해요.',
+            style: const TextStyle(fontSize: 12, color: teamixMuted),
+          ),
+          const SizedBox(height: 10),
+          Row(
+            children: [
+              Expanded(
+                child: OutlinedButton(
+                  onPressed: busy || target == null
+                      ? null
+                      : () => _before(target),
+                  child: Text(_working == '학습 전으로' ? '되돌리는 중…' : '학습 전으로'),
+                ),
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: FilledButton(
+                  onPressed: busy || target == null
+                      ? null
+                      : () => _learn(target),
+                  child: Text(_working == '학습하기' ? '학습 중… 몇 분 걸려요' : '학습하기'),
+                ),
+              ),
+            ],
+          ),
+          if (target != null) ...[const SizedBox(height: 12), _draft(target)],
+        ],
+      ),
+    );
+  }
+
+  /// The subgroup's saved draft, teams ordered by their first member.
+  Widget _draft(CompareTarget target) => FutureBuilder<Map<String, String>>(
+    future: _names[target.groupId] ??= widget.formation!.memberNames(
+      target.groupId,
+    ),
+    builder: (context, names) => StreamBuilder<FormationDraft?>(
+      stream: _drafts[target.activityId] ??= widget.formation!.draft(
+        target.activityId,
+      ),
+      builder: (context, snapshot) {
+        final draft = snapshot.data;
+        if (draft == null || draft.teams.isEmpty) {
+          return const Text(
+            '아직 편성 결과가 없어요. 버튼을 누르면 편성돼요.',
+            style: TextStyle(fontSize: 12, color: teamixMuted),
+          );
+        }
+        String name(String uid) => names.data?[uid] ?? uid;
+        final teams = [
+          for (final t in draft.teams)
+            if (t.members.isNotEmpty) [...t.members]..sort(),
+        ]..sort((a, b) => a.first.compareTo(b.first));
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              '현재 편성 · ${_status?.activeModelId == null ? '기본값' : '학습 보정'}',
+              key: const ValueKey('demo-draft-mode'),
+              style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w800),
+            ),
+            for (final (i, t) in teams.indexed)
+              Text(
+                '팀 ${i + 1} · ${t.map(name).join(', ')}',
+                style: const TextStyle(fontSize: 12, color: ink),
+              ),
+          ],
+        );
+      },
+    ),
+  );
+
+  final _names = <String, Future<Map<String, String>>>{};
+  final _drafts = <String, Stream<FormationDraft?>>{};
 
   Future<void> _runCompare(CompareTarget target) => _run('비교', () async {
     final result = await widget.admin.compare(target);
@@ -423,6 +552,7 @@ class _LearningScreenState extends State<LearningScreen> {
                       style: TextStyle(fontSize: 12, color: teamixMuted),
                     ),
                     const SizedBox(height: 12),
+                    if (widget.formation != null) _demo(s),
                     _current(s),
                     FilledButton.icon(
                       onPressed: _working == null ? _train : null,
