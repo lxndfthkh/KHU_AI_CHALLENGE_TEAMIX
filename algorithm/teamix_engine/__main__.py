@@ -7,7 +7,7 @@ from .engine import solve
 
 
 def main():
-    parser = argparse.ArgumentParser(description="TEAMIX 추천 편성안: 공개 전 처음 편성")
+    parser = argparse.ArgumentParser(description="TEAMIX 추천 편성안 (편성알고리즘 v3: 처음 편성·공개 후 재편성)")
     parser.add_argument("input")
     parser.add_argument("--public-output", required=True)
     parser.add_argument("--internal-output", required=True)

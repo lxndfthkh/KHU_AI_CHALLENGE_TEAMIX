@@ -1,1 +1,206 @@
-{"label":"추천 편성안","status":"FEASIBLE","elapsed_seconds":5.717937903999996,"teams":[{"team_id":"team_1","participants":["member_03","member_04","member_06","member_17","member_20"],"size":5,"common_times":["토 오후"],"time_availability":{"수 저녁":3,"금 저녁":4,"토 오후":5},"role_preferences":{"기획":1,"개발":1,"디자인":1,"운영":2},"self_reported_experience":{"sum":15,"respondents":5,"mean":{"numerator":15,"denominator":5}},"interests":{"웹 서비스":2,"콘텐츠":2,"커뮤니티":2,"앱 개발":1},"public_losses":{"size":0,"time":0,"role":150,"experience":0,"interest":103}},{"team_id":"team_2","participants":["member_01","member_08","member_13","member_14","member_19"],"size":5,"common_times":["금 저녁"],"time_availability":{"수 저녁":1,"금 저녁":5,"토 오후":3},"role_preferences":{"기획":2,"개발":1,"디자인":1,"운영":1},"self_reported_experience":{"sum":15,"respondents":5,"mean":{"numerator":15,"denominator":5}},"interests":{"웹 서비스":3,"콘텐츠":2,"커뮤니티":2,"앱 개발":2},"public_losses":{"size":0,"time":0,"role":150,"experience":0,"interest":90}},{"team_id":"team_3","participants":["member_09","member_11","member_12","member_15","member_18"],"size":5,"common_times":["수 저녁"],"time_availability":{"수 저녁":5,"금 저녁":4,"토 오후":1},"role_preferences":{"기획":1,"개발":1,"디자인":2,"운영":1},"self_reported_experience":{"sum":15,"respondents":5,"mean":{"numerator":15,"denominator":5}},"interests":{"웹 서비스":1,"콘텐츠":3,"커뮤니티":1,"앱 개발":2},"public_losses":{"size":0,"time":0,"role":150,"experience":0,"interest":183}},{"team_id":"team_4","participants":["member_02","member_05","member_07","member_10","member_16"],"size":5,"common_times":["금 저녁"],"time_availability":{"수 저녁":4,"금 저녁":5,"토 오후":4},"role_preferences":{"기획":1,"개발":2,"디자인":1,"운영":1},"self_reported_experience":{"sum":15,"respondents":5,"mean":{"numerator":15,"denominator":5}},"interests":{"웹 서비스":2,"콘텐츠":3,"커뮤니티":2,"앱 개발":2},"public_losses":{"size":0,"time":0,"role":150,"experience":0,"interest":28}}],"messages":[]}
+{
+  "label": "추천 편성안",
+  "status": "FEASIBLE",
+  "teams": [
+    {
+      "team_id": "team_1",
+      "participants": [
+        "member_11",
+        "member_12",
+        "member_13",
+        "member_15",
+        "member_18"
+      ],
+      "size": 5,
+      "common_times": [
+        "수 저녁"
+      ],
+      "time_availability": {
+        "수 저녁": 5,
+        "금 저녁": 4,
+        "토 오후": 1
+      },
+      "role_preferences": {
+        "기획": 1,
+        "개발": 1,
+        "디자인": 2,
+        "운영": 1
+      },
+      "self_reported_experience": {
+        "sum": 14,
+        "respondents": 5,
+        "mean": {
+          "numerator": 14,
+          "denominator": 5
+        }
+      },
+      "interests": {
+        "웹 서비스": 1,
+        "콘텐츠": 2,
+        "커뮤니티": 2,
+        "앱 개발": 2
+      },
+      "public_losses": {
+        "size": 0,
+        "time": 0,
+        "role": 150,
+        "experience": 50,
+        "interest": 134
+      }
+    },
+    {
+      "team_id": "team_2",
+      "participants": [
+        "member_01",
+        "member_06",
+        "member_14",
+        "member_19",
+        "member_20"
+      ],
+      "size": 5,
+      "common_times": [
+        "금 저녁"
+      ],
+      "time_availability": {
+        "수 저녁": 1,
+        "금 저녁": 5,
+        "토 오후": 3
+      },
+      "role_preferences": {
+        "기획": 1,
+        "개발": 2,
+        "디자인": 1,
+        "운영": 1
+      },
+      "self_reported_experience": {
+        "sum": 15,
+        "respondents": 5,
+        "mean": {
+          "numerator": 15,
+          "denominator": 5
+        }
+      },
+      "interests": {
+        "웹 서비스": 2,
+        "콘텐츠": 2,
+        "커뮤니티": 2,
+        "앱 개발": 1
+      },
+      "public_losses": {
+        "size": 0,
+        "time": 0,
+        "role": 150,
+        "experience": 0,
+        "interest": 103
+      }
+    },
+    {
+      "team_id": "team_3",
+      "participants": [
+        "member_02",
+        "member_03",
+        "member_04",
+        "member_09",
+        "member_17"
+      ],
+      "size": 5,
+      "common_times": [
+        "토 오후"
+      ],
+      "time_availability": {
+        "수 저녁": 4,
+        "금 저녁": 4,
+        "토 오후": 5
+      },
+      "role_preferences": {
+        "기획": 2,
+        "개발": 1,
+        "디자인": 1,
+        "운영": 1
+      },
+      "self_reported_experience": {
+        "sum": 15,
+        "respondents": 5,
+        "mean": {
+          "numerator": 15,
+          "denominator": 5
+        }
+      },
+      "interests": {
+        "웹 서비스": 3,
+        "콘텐츠": 3,
+        "커뮤니티": 1,
+        "앱 개발": 2
+      },
+      "public_losses": {
+        "size": 0,
+        "time": 0,
+        "role": 150,
+        "experience": 0,
+        "interest": 108
+      }
+    },
+    {
+      "team_id": "team_4",
+      "participants": [
+        "member_05",
+        "member_07",
+        "member_08",
+        "member_10",
+        "member_16"
+      ],
+      "size": 5,
+      "common_times": [
+        "금 저녁"
+      ],
+      "time_availability": {
+        "수 저녁": 3,
+        "금 저녁": 5,
+        "토 오후": 4
+      },
+      "role_preferences": {
+        "기획": 1,
+        "개발": 1,
+        "디자인": 1,
+        "운영": 2
+      },
+      "self_reported_experience": {
+        "sum": 16,
+        "respondents": 5,
+        "mean": {
+          "numerator": 16,
+          "denominator": 5
+        }
+      },
+      "interests": {
+        "웹 서비스": 2,
+        "콘텐츠": 3,
+        "커뮤니티": 2,
+        "앱 개발": 2
+      },
+      "public_losses": {
+        "size": 0,
+        "time": 0,
+        "role": 150,
+        "experience": 50,
+        "interest": 28
+      }
+    }
+  ],
+  "messages": [],
+  "kind": "initial",
+  "weights_used": {
+    "time": 50,
+    "role": 40,
+    "experience": 30,
+    "interest": 20,
+    "size": 10
+  },
+  "model_id": null,
+  "stage_proof": {
+    "pub": null,
+    "quality": false,
+    "draft": null
+  },
+  "elapsed_seconds": 2.0133617079700343
+}

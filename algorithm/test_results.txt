@@ -1,19 +1,46 @@
 test_01_basic_twenty (test_engine.EngineTests.test_01_basic_twenty) ... ok
+test_02_partial_keeps_outside_and_manual_locks (test_engine.EngineTests.test_02_partial_keeps_outside_and_manual_locks) ... ok
+test_03_19_new_participants_fill_without_moving_others (test_engine.EngineTests.test_03_19_new_participants_fill_without_moving_others) ... ok
+test_04_quality_before_draft (test_engine.EngineTests.test_04_quality_before_draft) ... ok
+test_05_draft_respected_on_ties (test_engine.EngineTests.test_05_draft_respected_on_ties) ... ok
 test_06_insufficient_role (test_engine.EngineTests.test_06_insufficient_role) ... ok
+test_07_private_preference_never_blocks (test_engine.EngineTests.test_07_private_preference_never_blocks) ... ok
+test_09_limit_without_candidate (test_engine.EngineTests.test_09_limit_without_candidate) ... ok
+test_10_manual_edit_uses_same_public_calculator (test_engine.EngineTests.test_10_manual_edit_uses_same_public_calculator) ... ok
 test_11_capacity (test_engine.EngineTests.test_11_capacity) ... ok
+test_12_capacity_never_changed (test_engine.EngineTests.test_12_capacity_never_changed) ... ok
 test_13_reproducible_without_cache (test_engine.EngineTests.test_13_reproducible_without_cache) ... ok
+test_13b_cache_reuses_same_input (test_engine.EngineTests.test_13b_cache_reuses_same_input) ... ok
+test_14_unproven_first_stage_is_not_optimal (test_engine.EngineTests.test_14_unproven_first_stage_is_not_optimal) ... ok
+test_15_candidate_kept_when_later_stages_hit_limit (test_engine.EngineTests.test_15_candidate_kept_when_later_stages_hit_limit) ... ok
+test_16_private_loss_not_saturated (test_engine.EngineTests.test_16_private_loss_not_saturated) ... ok
+test_17_model_infeasible_but_diagnostic_feasible_is_error (test_engine.EngineTests.test_17_model_infeasible_but_diagnostic_feasible_is_error) ... ok
+test_17b_diagnostic_fixed_role_conflict (test_engine.EngineTests.test_17b_diagnostic_fixed_role_conflict) ... ok
+test_18_later_stage_never_returns_worse_move_count (test_engine.EngineTests.test_18_later_stage_never_returns_worse_move_count) ... ok
 test_20_uncapped_team_can_exceed_five (test_engine.EngineTests.test_20_uncapped_team_can_exceed_five) ... ok
-test_diagnostic_fixed_role_conflict (test_engine.EngineTests.test_diagnostic_fixed_role_conflict) ... ok
+test_20b_table_over_limit_is_linearized_exactly (test_engine.EngineTests.test_20b_table_over_limit_is_linearized_exactly) ... ok
+test_20c_linearized_losses_match_verifier_on_forced_assignments (test_engine.EngineTests.test_20c_linearized_losses_match_verifier_on_forced_assignments) ... ok
+test_21_abnormal_stage_blocks_even_with_candidate (test_engine.EngineTests.test_21_abnormal_stage_blocks_even_with_candidate) ... ok
+test_21b_verifier_mismatch_blocks (test_engine.EngineTests.test_21b_verifier_mismatch_blocks) ... ok
+test_22_team_added_and_deleted (test_engine.EngineTests.test_22_team_added_and_deleted) ... ok
+test_22b_team_change_conflicts (test_engine.EngineTests.test_22b_team_change_conflicts) ... ok
 test_missing_response_not_imputed (test_engine.EngineTests.test_missing_response_not_imputed) ... ok
+test_precheck_scope_capacity_and_duplicates (test_engine.EngineTests.test_precheck_scope_capacity_and_duplicates) ... ok
 test_private_dedup_and_limit (test_engine.EngineTests.test_private_dedup_and_limit) ... ok
-test_public_reformation_rejected (test_engine.EngineTests.test_public_reformation_rejected) ... ok
 test_real_100001st_row_stops (test_engine.EngineTests.test_real_100001st_row_stops) ... ok
 test_similar_and_common_time (test_engine.EngineTests.test_similar_and_common_time) ... ok
 test_single_team_and_all_singletons (test_engine.EngineTests.test_single_team_and_all_singletons) ... ok
-test_table_limit (test_engine.EngineTests.test_table_limit) ... ok
+test_unknown_mode_rejected (test_engine.EngineTests.test_unknown_mode_rejected) ... ok
 test_verifier_rejects_invalid_assignment (test_engine.EngineTests.test_verifier_rejects_invalid_assignment) ... ok
+test_weights_times_ten_same_result (test_engine.EngineTests.test_weights_times_ten_same_result) ... ok
+test_existing_teams_filled_and_checked (test_setup.SetupTests.test_existing_teams_filled_and_checked) ... ok
+test_generates_teams_from_count_and_max (test_setup.SetupTests.test_generates_teams_from_count_and_max) ... ok
+test_no_max_means_uncapped (test_setup.SetupTests.test_no_max_means_uncapped) ... ok
+test_participants_over_total_invites (test_setup.SetupTests.test_participants_over_total_invites) ... ok
+test_setup_values_validated (test_setup.SetupTests.test_setup_values_validated) ... ok
+test_without_setup_unchanged (test_setup.SetupTests.test_without_setup_unchanged) ... ok
 
 ----------------------------------------------------------------------
-Ran 14 tests in 10.260s
+Ran 41 tests in 15.514s
 
 OK
