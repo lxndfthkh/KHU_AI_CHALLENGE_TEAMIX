@@ -10,6 +10,9 @@ import 'firestore_join_requests.dart' show JoinRequest;
 /// actually run them; the UI only offers them to admins. Null in demo mode.
 abstract interface class GroupAdmin {
   Future<String> issueInvitation(String groupId);
+
+  /// Turns a code off before it expires (rules allow only `active: false`).
+  Future<void> deactivateInvitation(String code);
   Stream<List<JoinRequest>> joinRequests(String groupId);
   Future<void> decideJoin(
     String groupId,
@@ -98,6 +101,10 @@ class FirestoreGroupAdmin implements GroupAdmin {
   @override
   Future<String> issueInvitation(String groupId) =>
       invitations.issueInvitation(_db, uid: uid, groupId: groupId);
+
+  @override
+  Future<void> deactivateInvitation(String code) =>
+      _db.doc('invitations/$code').update({'active': false});
 
   @override
   Stream<List<JoinRequest>> joinRequests(String groupId) =>
