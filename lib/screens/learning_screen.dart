@@ -74,13 +74,16 @@ class _LearningScreenState extends State<LearningScreen> {
     }
   }
 
-  Future<void> _train() => _run('학습', () => _load(widget.admin.train));
+  Future<void> _train() => _run('학습', () async {
+    // Not _load: a failed training must reach _run's error message.
+    final s = await widget.admin.train();
+    if (mounted) setState(() => _status = s);
+  });
 
-  /// The demo subgroup from algorithm/demo_compare.py when it exists.
+  /// Only the demo subgroup from algorithm/demo_compare.py: the demo buttons
+  /// rewrite its draft, which must never happen to a real subgroup.
   CompareTarget? _demoTarget(LearningStatus s) =>
-      _target ??
-      s.targets.where((t) => t.activityId == 'mock_compare_act').firstOrNull ??
-      s.targets.firstOrNull;
+      s.targets.where((t) => t.activityId == 'mock_compare_act').firstOrNull;
 
   /// Re-forms [target] with whatever weights are now in use.
   Future<void> _reform(CompareTarget target) async {
@@ -553,7 +556,8 @@ class _LearningScreenState extends State<LearningScreen> {
                       style: TextStyle(fontSize: 12, color: teamixMuted),
                     ),
                     const SizedBox(height: 12),
-                    if (widget.formation != null) _demo(s),
+                    if (widget.formation != null && _demoTarget(s) != null)
+                      _demo(s),
                     _current(s),
                     FilledButton.icon(
                       onPressed: _working == null ? _train : null,

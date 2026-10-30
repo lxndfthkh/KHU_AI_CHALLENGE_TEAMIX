@@ -193,7 +193,7 @@ class GroupHome extends StatelessWidget {
         title: Text('$groupName에서 나갈까요?'),
         content: const Text(
           '공개 전 소모임 신청은 취소되고, 공개된 팀 기록은 남아요. '
-          '다시 들어오려면 초대 코드가 필요해요.',
+          '나간 뒤에는 같은 계정으로 다시 참여 요청할 수 없어요.',
         ),
         actions: [
           TextButton(
