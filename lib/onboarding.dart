@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 
+import 'data/activity_backend.dart';
 import 'data/demo_group_repository.dart';
 import 'data/firestore_group_writer.dart';
 import 'data/firestore_groups_source.dart';
@@ -208,6 +209,18 @@ class _EntryScreenState extends State<EntryScreen> {
     code.clear();
   }
 
+  ActivityBackend? activityBackend;
+  String? activityBackendUid;
+
+  /// One per signed-in user so its HTTP client is reused across rebuilds.
+  ActivityBackend? backendFor(String uid) {
+    if (activityBackend == null || activityBackendUid != uid) {
+      activityBackendUid = uid;
+      activityBackend = FirebaseActivityBackend(FirebaseFirestore.instance, uid);
+    }
+    return activityBackend;
+  }
+
   GroupAdmin? get groupAdmin {
     final user = firestoreUser;
     return user == null
@@ -394,6 +407,8 @@ class _EntryScreenState extends State<EntryScreen> {
       groupRepository.clearMemberships();
       myGroups = null;
       myGroupsUid = null;
+      activityBackend = null;
+      activityBackendUid = null;
       clearInvite();
       password.clear();
       confirmation.clear();
@@ -655,6 +670,7 @@ class _EntryScreenState extends State<EntryScreen> {
             onSignOut: signOut,
             onToggleDemoGroups: toggleDemoGroups,
             groupAdmin: uid == null ? null : groupAdmin,
+            activityBackend: uid == null ? null : backendFor(uid),
           );
 
       content = uid == null

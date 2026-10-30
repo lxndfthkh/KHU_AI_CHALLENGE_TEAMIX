@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../data/demo_group_repository.dart';
+import '../models/activity.dart';
 import '../theme.dart';
 import 'group_card_palette.dart';
 import 'matching_settings_screen.dart';
@@ -12,11 +13,19 @@ class SubgroupDetailScreen extends StatelessWidget {
     required this.subgroup,
     required this.isOperator,
     this.palette = GroupCardPalette.defaultJoined,
+    this.registration,
+    this.onApply,
   });
 
   final String groupName;
   final DemoSubgroup subgroup;
   final bool isOperator;
+
+  /// The caller's own registration; null keeps the demo notice.
+  final Stream<Registration?>? registration;
+
+  /// Opens the survey (new or edit); null when not recruiting.
+  final void Function(Registration? current)? onApply;
 
   /// The parent group's color from the groups home.
   final GroupCardPalette palette;
@@ -26,6 +35,16 @@ class SubgroupDetailScreen extends StatelessWidget {
       SnackBar(content: Text('$feature 기능은 준비 중이에요.')),
     );
   }
+
+  Widget _applyButton(String label, VoidCallback? onPressed) => FilledButton(
+    style: FilledButton.styleFrom(
+      backgroundColor: teamixAddBackground,
+      foregroundColor: teamixAddForeground,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
+    ),
+    onPressed: onPressed,
+    child: Text(label),
+  );
 
   void _more(BuildContext context) {
     final items = isOperator
@@ -234,16 +253,27 @@ class SubgroupDetailScreen extends StatelessWidget {
             child: ConstrainedBox(
               constraints: const BoxConstraints(maxWidth: 520),
               child: Column(mainAxisSize: MainAxisSize.min, children: [
-                FilledButton(
-                  style: FilledButton.styleFrom(
-                    backgroundColor: teamixAddBackground,
-                    foregroundColor: teamixAddForeground,
-                    shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(15)),
+                if (registration == null)
+                  _applyButton(
+                    '참가 신청하기',
+                    () => _pending(context, '참가 신청'),
+                  )
+                else
+                  StreamBuilder<Registration?>(
+                    stream: registration,
+                    builder: (context, snapshot) {
+                      final current = snapshot.data;
+                      final submitted = current?.submitted ?? false;
+                      return _applyButton(
+                        onApply == null
+                            ? (submitted ? '신청 완료 · 모집 마감' : '모집이 마감됐어요')
+                            : submitted
+                            ? '신청 완료 · 응답 수정하기'
+                            : '참가 신청하기',
+                        onApply == null ? null : () => onApply!(current),
+                      );
+                    },
                   ),
-                  onPressed: () => _pending(context, '참가 신청'),
-                  child: const Text('참가 신청하기'),
-                ),
                 const SizedBox(height: 9),
                 Text(
                   isOperator

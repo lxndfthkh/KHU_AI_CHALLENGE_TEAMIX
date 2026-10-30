@@ -1,3 +1,4 @@
+import '../models/activity.dart';
 import '../models/group_summary.dart';
 import 'group_repository.dart';
 
@@ -102,8 +103,26 @@ class DemoGroupRepository implements GroupRepository {
 }
 
 
-/// Display fixture, not a Firestore document or an authorization source.
+/// View model for the subgroup detail: demo fixtures, or a real activity
+/// through [DemoSubgroup.fromActivity]. Not an authorization source.
 class DemoSubgroup {
+  /// Teams are only fixed when recruiting closes, so this shows the
+  /// estimate from targetTeamSize.
+  factory DemoSubgroup.fromActivity(Activity a) => DemoSubgroup(
+    groupId: a.groupId,
+    title: a.title,
+    description: a.description,
+    goal: '',
+    recruitmentCapacity: a.capacity,
+    applicationCount: a.participantCount,
+    deadline: a.deadline ?? DateTime.now(),
+    status: a.status,
+    matchingSettings: {
+      'teamCount': a.estimatedTeamCount,
+      'teamCapacities': List<int>.filled(a.estimatedTeamCount, a.targetTeamSize),
+    },
+  );
+
   const DemoSubgroup({
     required this.groupId,
     required this.title,

@@ -1,9 +1,13 @@
 import 'package:flutter/material.dart';
 
 import '../theme.dart';
+import '../data/activity_backend.dart';
 import '../data/demo_group_repository.dart';
+import '../models/activity.dart';
 import '../widgets/invite_code_dialog.dart';
 import 'group_card_palette.dart';
+import 'create_activity_screen.dart';
+import 'registration_screen.dart';
 import 'subgroup_detail_screen.dart';
 import 'matching_settings_screen.dart';
 
@@ -16,6 +20,8 @@ class GroupHome extends StatelessWidget {
     this.palette = GroupCardPalette.defaultJoined,
     this.onIssueInvite,
     this.onOpenJoinRequests,
+    this.groupId,
+    this.activityBackend,
   });
 
   final String groupName;
@@ -29,6 +35,139 @@ class GroupHome extends StatelessWidget {
 
   /// Opens the real join request list; null keeps the demo notice.
   final VoidCallback? onOpenJoinRequests;
+
+  /// Firestore group and subgroup data; both null in demo mode.
+  final String? groupId;
+  final ActivityBackend? activityBackend;
+
+  void _openActivity(
+    BuildContext context,
+    ActivityBackend backend,
+    String groupId,
+    Activity activity,
+  ) {
+    // Created once: the route builder can run again on rebuilds.
+    final registration = backend.myRegistration(groupId, activity.id);
+    Navigator.of(context).push<void>(MaterialPageRoute<void>(
+      builder: (detail) => SubgroupDetailScreen(
+        groupName: groupName,
+        subgroup: DemoSubgroup.fromActivity(activity),
+        isOperator: isOperator,
+        palette: palette,
+        registration: registration,
+        onApply: !activity.recruiting
+            ? null
+            : (current) => _apply(detail, backend, activity, current),
+      ),
+    ));
+  }
+
+  Future<void> _apply(
+    BuildContext context,
+    ActivityBackend backend,
+    Activity activity,
+    Registration? current,
+  ) async {
+    final List<ActivityQuestion> questions;
+    try {
+      questions = await backend.questions(activity.id);
+    } catch (_) {
+      if (context.mounted) _preview(context, '설문 불러오기');
+      return;
+    }
+    if (!context.mounted) return;
+    final editing = current?.submitted ?? false;
+    Navigator.of(context).push<void>(MaterialPageRoute<void>(
+      builder: (_) => RegistrationScreen(
+        activity: activity,
+        questions: questions,
+        palette: palette,
+        initialAnswers: editing ? current!.answers : const {},
+        onSubmit: (answers) => editing
+            ? backend.updateRegistration(activity.id, answers)
+            : backend.submitRegistration(activity.id, answers),
+      ),
+    ));
+  }
+
+  void _createActivity(
+    BuildContext context,
+    ActivityBackend backend,
+    String groupId,
+  ) {
+    Navigator.of(context).push<void>(MaterialPageRoute<void>(
+      builder: (_) => CreateActivityScreen(
+        groupName: groupName,
+        palette: palette,
+        onCreate: (activity) => backend.createActivity(groupId, activity),
+      ),
+    ));
+  }
+
+  List<Widget> _activityList(BuildContext context) {
+    final backend = activityBackend, id = groupId;
+    if (backend == null || id == null) {
+      return [
+        for (final subgroup in DemoGroupRepository.subgroupsFor(groupName))
+          Padding(
+            padding: const EdgeInsets.only(bottom: 10),
+            child: _Activity(
+              title: subgroup.title,
+              questions: '희망 역할 · 가능 시간 · 경험 수준',
+              color: palette.background,
+              accent: palette.accent,
+              onDetail: () => _detail(context, subgroup),
+              onEdit: isOperator
+                  ? () => _preview(context, '소모임 내용·상태 수정')
+                  : null,
+            ),
+          ),
+      ];
+    }
+    return [
+      _ActivityStream(
+        stream: () => backend.activities(id),
+        builder: (context, snapshot) {
+          if (snapshot.hasError) {
+            return const Text(
+              '소모임을 불러오지 못했어요.',
+              style: TextStyle(fontSize: 12, color: teamixMuted),
+            );
+          }
+          final activities = snapshot.data;
+          if (activities == null) {
+            return const Center(child: CircularProgressIndicator());
+          }
+          if (activities.isEmpty) {
+            return Text(
+              isOperator
+                  ? '아직 소모임이 없어요. 소모임 창설로 첫 활동을 열어 보세요.'
+                  : '아직 열린 소모임이 없어요.',
+              style: const TextStyle(fontSize: 12, color: teamixMuted),
+            );
+          }
+          return Column(
+            children: [
+              for (final a in activities)
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 10),
+                  child: _Activity(
+                    title: a.title,
+                    questions:
+                        '${a.participantCount} / ${a.capacity}명 · 팀당 ${a.targetTeamSize}명',
+                    badge: a.statusLabel,
+                    color: palette.background,
+                    accent: palette.accent,
+                    onDetail: () => _openActivity(context, backend, id, a),
+                    onEdit: null,
+                  ),
+                ),
+            ],
+          );
+        },
+      ),
+    ];
+  }
   void _detail(BuildContext context, DemoSubgroup subgroup) {
     Navigator.of(context).push<void>(MaterialPageRoute<void>(
       builder: (_) => SubgroupDetailScreen(
@@ -223,7 +362,13 @@ class GroupHome extends StatelessWidget {
                     child: _Action(
                       icon: Icons.add,
                       text: '소모임 창설',
-                      onTap: () => _preview(context, '소모임 창설'),
+                      onTap: activityBackend == null || groupId == null
+                          ? () => _preview(context, '소모임 창설')
+                          : () => _createActivity(
+                              context,
+                              activityBackend!,
+                              groupId!,
+                            ),
                     ),
                   ),
                 ],
@@ -294,26 +439,33 @@ class GroupHome extends StatelessWidget {
                 ],
               ),
               const SizedBox(height: 6),
-              for (final subgroup in DemoGroupRepository.subgroupsFor(groupName))
-                Padding(
-                  padding: const EdgeInsets.only(bottom: 10),
-                  child: _Activity(
-                    title: subgroup.title,
-                    questions: '희망 역할 · 가능 시간 · 경험 수준',
-                    color: palette.background,
-                    accent: palette.accent,
-                    onDetail: () => _detail(context, subgroup),
-                    onEdit: isOperator
-                        ? () => _preview(context, '소모임 내용·상태 수정')
-                        : null,
-                  ),
-                ),
+              ..._activityList(context),
             ],
           ),
         ),
       ),
     ),
   );
+}
+
+/// Subscribes once; a StreamBuilder given `backend.activities(id)` directly
+/// would open a new Firestore listener on every rebuild.
+class _ActivityStream extends StatefulWidget {
+  const _ActivityStream({required this.stream, required this.builder});
+
+  final Stream<List<Activity>> Function() stream;
+  final AsyncWidgetBuilder<List<Activity>> builder;
+
+  @override
+  State<_ActivityStream> createState() => _ActivityStreamState();
+}
+
+class _ActivityStreamState extends State<_ActivityStream> {
+  late final Stream<List<Activity>> _stream = widget.stream();
+
+  @override
+  Widget build(BuildContext context) =>
+      StreamBuilder<List<Activity>>(stream: _stream, builder: widget.builder);
 }
 
 class _Action extends StatelessWidget {
@@ -365,9 +517,10 @@ class _Activity extends StatelessWidget {
     required this.accent,
     required this.onDetail,
     required this.onEdit,
+    this.badge = '참가 모집 중',
   });
 
-  final String title, questions;
+  final String title, questions, badge;
   final Color color, accent;
   final VoidCallback onDetail;
   final VoidCallback? onEdit;
@@ -398,7 +551,7 @@ class _Activity extends StatelessWidget {
                 borderRadius: BorderRadius.circular(10),
               ),
               child: Text(
-                '참가 모집 중',
+                badge,
                 style: TextStyle(fontSize: 9, color: accent),
               ),
             ),

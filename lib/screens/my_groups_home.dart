@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../data/activity_backend.dart';
 import '../data/group_admin.dart';
 import '../models/group_summary.dart';
 import '../theme.dart';
@@ -19,6 +20,7 @@ class MyGroupsHome extends StatelessWidget {
     this.busy = false,
     this.onToggleDemoGroups,
     this.groupAdmin,
+    this.activityBackend,
   });
 
   /// `null` while the first snapshot is loading.
@@ -34,6 +36,9 @@ class MyGroupsHome extends StatelessWidget {
   /// Issues an invite code for a group ID; null in demo mode.
   /// Firestore operator actions (invites, join requests); null in demo mode.
   final GroupAdmin? groupAdmin;
+
+  /// Firestore subgroups and registrations; null in demo mode.
+  final ActivityBackend? activityBackend;
 
   void _add(BuildContext context) {
     showModalBottomSheet<void>(
@@ -170,6 +175,8 @@ class MyGroupsHome extends StatelessWidget {
           groupName: group.name,
           isOperator: group.isOperator,
           palette: palette,
+          groupId: activityBackend == null ? null : group.groupId,
+          activityBackend: activityBackend,
           onIssueInvite: admin == null
               ? null
               : () => admin.issueInvitation(group.groupId),
