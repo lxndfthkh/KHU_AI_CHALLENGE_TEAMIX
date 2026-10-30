@@ -8,7 +8,7 @@
 - `_schema/*`: 관리용 데이터 구조 설명. 실제 사용자나 모임이 아님. 클라이언트 접근 불가.
 - 상세 필드는 `firestore.schema.json` 참조.
 - Firestore는 스키마를 강제 생성하는 테이블 DB가 아니다. 실제 사용자·모임 컬렉션은 첫 유효 데이터 저장 때 생긴다.
-- UI, Auth 프로필 동기화, 서버 비즈니스 로직은 이번 작업에 포함되지 않았다.
+- 앱 연결: 로그인 시 `users/{uid}` 생성, 내 모임 홈 조회, 모임 만들기(아래 '서버 없이 처리하는 명령'). 나머지 서버 비즈니스 로직은 아직 없다.
 
 ## 확정 기준
 - `targetTeamSize`: 소모임을 만들 때 입력받는 팀당 목표 인원. 별도 팀 수 입력을 요구하지 않는다.
@@ -27,9 +27,11 @@
 5. 각 소모임의 참가/마감/편성/공개 기능을 서버 호출로 연결.
 
 ## 아직 구현해야 하는 서버 명령
-이 명령들이 구현되기 전에는 users의 안전한 프로필 쓰기와 notifications의 읽음 처리 외 직접 클라이언트 쓰기는 거절된다. 보안 규칙을 전체 허용으로 바꾸지 않는다.
+이 명령들이 구현되기 전에는 users의 안전한 프로필 쓰기, notifications의 읽음 처리, 아래 createGroup 배치 외 직접 클라이언트 쓰기는 거절된다. 보안 규칙을 전체 허용으로 바꾸지 않는다.
 
-- createGroup: 그룹과 생성자의 approved/admin 멤버십을 원자적으로 생성.
+### 서버 없이 처리하는 명령 (무료 Spark 요금제 시뮬레이터용)
+- createGroup: 앱이 `groups/{id}`와 `memberships/{id}_{uid}`(role admin, status approved)를 한 배치로 쓴다. 규칙이 서로의 존재(existsAfter/getAfter), 본인 uid, 정해진 필드·길이, 새 모임 여부를 검사하므로 기존 모임에 자신을 운영진으로 넣을 수 없다. 구현: `lib/data/firestore_group_writer.dart`. Cloud Functions를 쓰게 되면 이 규칙을 지우고 서버 명령으로 옮긴다.
+
 - issueInvitation / previewInvitation: 초대 토큰 발급·만료 검사·최소 정보 반환. 조회 속도 제한.
 - requestJoin: 유효 초대 검사 후 pending/member 생성. 동일 요청 중복 방지.
 - approveJoin / rejectJoin: 해당 그룹 admin 확인 후 전이 및 알림 생성.

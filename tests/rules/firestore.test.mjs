@@ -2,7 +2,7 @@ import { readFileSync } from 'node:fs';
 import { before, beforeEach, after, test } from 'node:test';
 import assert from 'node:assert/strict';
 import { initializeTestEnvironment, assertFails, assertSucceeds } from '@firebase/rules-unit-testing';
-import { doc, setDoc, getDoc, getDocs, updateDoc, deleteDoc, collection,
+import { doc, setDoc, getDoc, getDocs, updateDoc, deleteDoc, collection, writeBatch,
   query, where, orderBy, limit, Timestamp, serverTimestamp } from 'firebase/firestore';
 
 // Paths and fields follow firestore.schema.json / docs/FIRESTORE.md.
@@ -126,6 +126,55 @@ test('앱 홈 쿼리: lib/data/firestore_groups_source.dart와 같은 조건이 
   // Pending members get only their membership; the group query is refused.
   await assertFails(getDocs(recruiting(db('applicant'))));
   await assertFails(getDocs(query(collection(s, 'activities'), where('status', '==', 'recruiting'))));
+});
+
+const newGroup = (uid, extra = {}) => ({ name: '새 모임', description: '함께해요', categories: ['스터디'],
+  ownerId: uid, themeColor: 'mint', status: 'active', createdAt: serverTimestamp(), updatedAt: serverTimestamp(), ...extra });
+const creatorMembership = (uid, groupId, extra = {}) => ({ groupId, userId: uid, displayName: uid, role: 'admin',
+  status: 'approved', createdAt: serverTimestamp(), updatedAt: serverTimestamp(), ...extra });
+// Mirrors lib/data/firestore_group_writer.dart: both documents in one batch.
+function createGroup(s, uid, { gid = 'n1', group = {}, member = {}, memberId } = {}) {
+  const batch = writeBatch(s);
+  batch.set(ref(s, `groups/${gid}`), newGroup(uid, group));
+  batch.set(ref(s, `memberships/${memberId ?? `${gid}_${uid}`}`), creatorMembership(uid, gid, member));
+  return batch.commit();
+}
+
+test('모임 만들기: 모임과 본인 운영진 멤버십을 한 번에 만들면 허용된다', async () => {
+  const s = db('outsider');
+  await assertSucceeds(createGroup(s, 'outsider'));
+  await assertSucceeds(getDoc(ref(s, 'groups/n1')));
+  await assertSucceeds(createGroup(s, 'outsider', { gid: 'n2', group: { categories: [], themeColor: 'lilac' } }));
+});
+
+test('모임 만들기: 한쪽 문서만 만들거나 남의 이름으로 만들 수 없다', async () => {
+  const s = db('outsider');
+  await assertFails(setDoc(ref(s, 'groups/n1'), newGroup('outsider')));
+  await assertFails(setDoc(ref(s, 'memberships/n1_outsider'), creatorMembership('outsider', 'n1')));
+  await assertFails(createGroup(s, 'outsider', { group: { ownerId: 'member' } }));
+  await assertFails(createGroup(s, 'outsider', { member: { userId: 'member' } }));
+  await assertFails(createGroup(s, 'outsider', { memberId: 'n1_member' }));
+  await assertFails(createGroup(anon(), 'outsider'));
+});
+
+test('모임 만들기: 이미 있는 모임의 운영진으로 자신을 넣을 수 없다', async () => {
+  const s = db('outsider');
+  await assertFails(setDoc(ref(s, 'memberships/g_outsider'), creatorMembership('outsider', 'g')));
+  await assertFails(createGroup(s, 'outsider', { gid: 'g' }));
+  await assertFails(createGroup(s, 'outsider', { gid: 'a_b' }));
+});
+
+test('모임 만들기: 정해진 필드와 값만 허용한다', async () => {
+  const s = db('outsider');
+  for (const group of [
+    { name: '' }, { name: '가'.repeat(41) }, { description: '' }, { categories: ['a', 'b', 'c'] },
+    { categories: [1] }, { themeColor: 'blue' }, { status: 'archived' }, { createdAt: old }, { inviteCode: 'X' },
+  ]) {
+    await assertFails(createGroup(s, 'outsider', { group }));
+  }
+  for (const member of [{ role: 'member' }, { status: 'pending' }, { displayName: '' }, { invitationId: 'i' }]) {
+    await assertFails(createGroup(s, 'outsider', { member }));
+  }
 });
 
 test('멤버십은 클라이언트가 만들거나 역할을 올릴 수 없다', async () => {

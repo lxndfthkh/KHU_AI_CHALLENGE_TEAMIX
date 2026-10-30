@@ -9,12 +9,13 @@ class GroupCardPalette {
   final Color accent;
 
   static const joined = <GroupCardPalette>[
-    GroupCardPalette(mint, teamixPrimary),
+    defaultJoined,
     GroupCardPalette(butter, teamixPeachAccent),
     GroupCardPalette(Color(0xFFEDF4FC), Color(0xFF7898BA)),
     GroupCardPalette(Color(0xFFFCEFF2), Color(0xFFB58394)),
   ];
   static const pending = GroupCardPalette(lilac, teamixPurpleAccent);
+  static const defaultJoined = GroupCardPalette(mint, teamixPrimary);
 
   static GroupCardPalette forGroup(int joinedIndex, {bool isPending = false}) {
     if (isPending) return pending;

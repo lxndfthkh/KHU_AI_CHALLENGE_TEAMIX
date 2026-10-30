@@ -96,7 +96,7 @@ class MyGroupsHome extends StatelessWidget {
               Text(
                 demoMode
                     ? '디자인 시연 모드 · 실제 계정에 연결되지 않았어요.'
-                    : '내 모임은 Firestore에서 불러와요. 모임 만들기·참가는 서버 기능 연결 후 지원돼요.',
+                    : '내 모임과 모임 만들기는 Firestore에 연결돼 있어요. 모임 참가는 서버 기능 연결 후 지원돼요.',
                 style: const TextStyle(color: teamixMuted),
               ),
               if (demoMode && onToggleDemoGroups != null)
@@ -151,11 +151,19 @@ class MyGroupsHome extends StatelessWidget {
     ),
   );
 
-  void _openGroup(BuildContext context, GroupSummary group) {
+  void _openGroup(
+    BuildContext context,
+    GroupSummary group,
+    GroupCardPalette palette,
+  ) {
     Navigator.of(context).push<void>(
       MaterialPageRoute<void>(
         builder: (_) =>
-            GroupHome(groupName: group.name, isOperator: group.isOperator),
+            GroupHome(
+              groupName: group.name,
+              isOperator: group.isOperator,
+              palette: palette,
+            ),
       ),
     );
   }
@@ -173,7 +181,7 @@ class MyGroupsHome extends StatelessWidget {
       activities: group.activityTitles,
       roleLabel: group.roleLabel,
       pending: group.pending,
-      onTap: group.pending || busy ? null : () => _openGroup(context, group),
+      onTap: group.pending || busy ? null : () => _openGroup(context, group, palette),
     );
   }
 
