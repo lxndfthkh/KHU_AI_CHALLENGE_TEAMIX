@@ -66,6 +66,16 @@ class CompareTarget {
   );
 
   final String groupId, activityId, title, groupName;
+
+  // Each status reload makes new objects; the dropdown matches by subgroup.
+  @override
+  bool operator ==(Object other) =>
+      other is CompareTarget &&
+      other.groupId == groupId &&
+      other.activityId == activityId;
+
+  @override
+  int get hashCode => Object.hash(groupId, activityId);
 }
 
 class CompareTeam {

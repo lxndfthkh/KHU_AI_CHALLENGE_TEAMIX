@@ -40,8 +40,11 @@ class FakeLearning implements LearningAdmin {
   Future<bool> isServiceAdmin() async => true;
   @override
   Future<LearningStatus> status() async => current;
+  bool failTraining = false;
+
   @override
   Future<LearningStatus> train() async {
+    if (failTraining) throw StateError('server down');
     calls.add('train');
     return current = LearningStatus(
       latest: trained.latest,
@@ -251,5 +254,33 @@ void main() {
     expect(formation.runs.last, 'mock_compare_act default');
     expect(find.text('현재 편성 · 기본값'), findsOneWidget);
     expect(find.text('팀 1 · 참가자 1, 참가자 2, 참가자 3, 참가자 4'), findsOneWidget);
+  });
+
+  testWidgets('학습 실패는 알리고, 데모 소모임이 없으면 시연 칸을 숨긴다', (tester) async {
+    tester.view.physicalSize = const Size(900, 2400);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
+    final admin = FakeLearning()
+      ..failTraining = true
+      ..current = LearningStatus.fromJson({
+        'targets': [
+          {'groupId': 'g9', 'activityId': 'real_act', 'title': '진짜 소모임'},
+        ],
+      });
+    final formation = FakeFormation(admin);
+    addTearDown(formation.drafts.close);
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: buildTeamixTheme(),
+        home: LearningScreen(admin: admin, formation: formation),
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(find.text('시연 · 학습 전후로 편성 바꾸기'), findsNothing);
+
+    await tester.tap(find.text('후기로 학습하기'));
+    await tester.pumpAndSettle();
+    expect(find.text('학습에 실패했어요.'), findsOneWidget);
+    expect(formation.runs, isEmpty);
   });
 }

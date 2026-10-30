@@ -69,7 +69,7 @@ class _MembersScreenState extends State<MembersScreen> {
         title: Text('${m.displayName}님을 내보낼까요?'),
         content: const Text(
           '공개 전 소모임 신청은 취소되고, 공개된 팀 기록은 남아요. '
-          '다시 들어오려면 새 초대가 필요해요.',
+          '내보낸 사람은 같은 계정으로 다시 참여 요청할 수 없어요.',
         ),
         actions: [
           TextButton(
