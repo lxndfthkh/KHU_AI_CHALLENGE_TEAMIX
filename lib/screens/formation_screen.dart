@@ -43,6 +43,10 @@ class FormationScreen extends StatefulWidget {
 class _FormationScreenState extends State<FormationScreen> {
   late final Stream<FormationDraft?> _draft;
   late final StreamSubscription<ActivityRecord?> _activitySub;
+  StreamSubscription<FormationSettings?>? _settingsSub;
+
+  /// Personality axis ID -> label, from the activity's matching settings.
+  Map<String, String> _traitLabels = const {};
   ActivityRecord? _activity;
   Map<String, String> _names = const {};
   List<String> _precheck = const [];
@@ -65,6 +69,15 @@ class _FormationScreenState extends State<FormationScreen> {
       setState(() => _activity = a);
       if (first) {
         _draft = widget.backend.draft(a.id);
+        try {
+          _settingsSub = widget.backend.settings(a.id).listen((s) {
+            if (mounted && s != null) {
+              setState(() => _traitLabels = s.traitLabels);
+            }
+          }, onError: (_) {});
+        } catch (_) {
+          // Labels are optional; bars fall back to axis IDs.
+        }
         _refresh();
       }
     });
@@ -73,6 +86,7 @@ class _FormationScreenState extends State<FormationScreen> {
   @override
   void dispose() {
     _activitySub.cancel();
+    _settingsSub?.cancel();
     super.dispose();
   }
 
@@ -222,6 +236,119 @@ class _FormationScreenState extends State<FormationScreen> {
         .then((_) => _refresh());
   }
 
+  /// Below this size a team average would reveal individual answers.
+  static const minTeamForTraits = 3;
+
+  /// Axis ID -> average over everyone placed in a team, the bars' reference.
+  Map<String, double> _overallTraits(FormationDraft draft) {
+    final sums = <String, int>{}, counts = <String, int>{};
+    for (final t in draft.teams) {
+      for (final MapEntry(key: axis, value: score)
+          in t.summary.personality.entries) {
+        sums[axis] = (sums[axis] ?? 0) + score.sum;
+        counts[axis] = (counts[axis] ?? 0) + score.items * score.respondents;
+      }
+    }
+    return {
+      for (final axis in sums.keys)
+        if ((counts[axis] ?? 0) > 0) axis: sums[axis]! / counts[axis]!,
+    };
+  }
+
+  Widget _traitBars(TeamDraft team, Map<String, double> overall) {
+    final scores = team.summary.personality;
+    if (scores.isEmpty) return const SizedBox.shrink();
+    if (team.members.length < minTeamForTraits) {
+      return const Padding(
+        padding: EdgeInsets.only(top: 6),
+        child: Text(
+          '성향 · 3명 이상인 팀만 평균을 보여줘요',
+          style: TextStyle(fontSize: 11, color: teamixMuted),
+        ),
+      );
+    }
+    final axes = [
+      ..._traitLabels.keys.where(scores.containsKey),
+      ...scores.keys.where((k) => !_traitLabels.containsKey(k)),
+    ];
+    return Padding(
+      padding: const EdgeInsets.only(top: 8),
+      child: Column(
+        children: [
+          for (final axis in axes)
+            _traitBar(
+              _traitLabels[axis] ?? axis,
+              scores[axis]!.mean,
+              overall[axis],
+              key: ValueKey('trait-${team.teamId}-$axis'),
+            ),
+        ],
+      ),
+    );
+  }
+
+  /// One axis: the team's 1-5 average as a bar, the overall average as a tick.
+  Widget _traitBar(String label, double mean, double? overall, {Key? key}) {
+    double pos(double v) => ((v - 1) / 4).clamp(0.0, 1.0).toDouble();
+    return Padding(
+      key: key,
+      padding: const EdgeInsets.only(bottom: 4),
+      child: Row(
+        children: [
+          SizedBox(
+            width: 56,
+            child: Text(
+              label,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(fontSize: 11, color: ink),
+            ),
+          ),
+          Expanded(
+            child: SizedBox(
+              height: 10,
+              child: LayoutBuilder(
+                builder: (context, box) => Stack(
+                  children: [
+                    Container(
+                      decoration: BoxDecoration(
+                        color: teamixBackground,
+                        borderRadius: BorderRadius.circular(5),
+                      ),
+                    ),
+                    Container(
+                      width: box.maxWidth * pos(mean),
+                      decoration: BoxDecoration(
+                        color: widget.palette.accent,
+                        borderRadius: BorderRadius.circular(5),
+                      ),
+                    ),
+                    if (overall != null && box.maxWidth > 2)
+                      Positioned(
+                        left: (box.maxWidth * pos(overall) - 1)
+                            .clamp(0.0, box.maxWidth - 2)
+                            .toDouble(),
+                        top: 0,
+                        bottom: 0,
+                        child: Container(width: 2, color: ink),
+                      ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+          SizedBox(
+            width: 34,
+            child: Text(
+              mean.toStringAsFixed(1),
+              textAlign: TextAlign.right,
+              style: const TextStyle(fontSize: 11, color: teamixMuted),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   Widget _team(
     FormationDraft draft,
     TeamDraft team, {
@@ -271,6 +398,7 @@ class _FormationScreenState extends State<FormationScreen> {
               f,
               style: TextStyle(fontSize: 11, color: widget.palette.accent),
             ),
+          _traitBars(team, _overallTraits(draft)),
           const SizedBox(height: 6),
           if (team.members.isEmpty)
             const Text(
@@ -376,6 +504,14 @@ class _FormationScreenState extends State<FormationScreen> {
       if (hasDraft) ...[
         if (!draft!.valid && draft.conflicts.isNotEmpty)
           _problems('공개 전에 해결해야 해요', draft.conflicts),
+        if (draft.teams.any((t) => t.summary.personality.isNotEmpty))
+          const Padding(
+            padding: EdgeInsets.only(bottom: 10),
+            child: Text(
+              '막대는 팀의 성향 평균(1~5), 검은 선은 전체 평균이에요.',
+              style: TextStyle(fontSize: 11, color: teamixMuted),
+            ),
+          ),
         for (final t in draft.teams) _team(draft, t, selectable: a.published),
         if (a.published) ...[
           OutlinedButton(

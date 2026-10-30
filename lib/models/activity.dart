@@ -67,6 +67,29 @@ class Registration {
   bool get submitted => status == 'submitted';
 }
 
+/// One personality axis (matching.traits): 1-3 scale questions averaged into
+/// a score; reverse items count as 6 - answer. The engine balances each axis
+/// across teams (or groups similar people with `similar`).
+class TraitAxis {
+  const TraitAxis({required this.id, required this.label, required this.items});
+
+  /// Lowercase letters/digits, unique within the activity.
+  final String id;
+  final String label;
+
+  /// (question ID, reverse).
+  final List<(String, bool)> items;
+
+  Map<String, Object> toJson() => {
+    'id': id,
+    'label': label,
+    'items': [
+      for (final (questionId, reverse) in items)
+        {'questionId': questionId, if (reverse) 'reverse': true},
+    ],
+  };
+}
+
 /// Input for createActivity (functions/src/validation.js activity()).
 class NewActivity {
   const NewActivity({
@@ -80,6 +103,7 @@ class NewActivity {
     required this.criteria,
     this.method = 'balanced',
     this.requireCommonTime = false,
+    this.traits = const [],
   });
 
   final String title;
@@ -100,6 +124,10 @@ class NewActivity {
   final String method;
   final bool requireCommonTime;
 
+  /// Personality axes; when present the 'personality' criterion leads the
+  /// priority (operators can reorder it in the formation settings).
+  final List<TraitAxis> traits;
+
   Map<String, Object> toJson() => {
     'title': title.trim(),
     'type': type,
@@ -111,8 +139,13 @@ class NewActivity {
     'matching': {
       'method': method,
       'questionCriteria': criteria,
-      'priority': [...criteria.values, 'size'],
+      'priority': [
+        if (traits.isNotEmpty) 'personality',
+        ...criteria.values,
+        'size',
+      ],
       'requireCommonTime': requireCommonTime,
+      if (traits.isNotEmpty) 'traits': [for (final t in traits) t.toJson()],
     },
   };
 }
