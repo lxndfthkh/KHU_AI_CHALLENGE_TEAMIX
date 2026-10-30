@@ -6,6 +6,7 @@ class PendingJoin {
     required this.status,
     this.requestedAt,
     this.decidedAt,
+    this.groupName,
     this.description,
   });
 
@@ -17,7 +18,7 @@ class PendingJoin {
   final DateTime? decidedAt;
 
   /// From the invite used to ask; null once that code expired or was off.
-  final String? description;
+  final String? groupName, description;
 }
 
 abstract interface class PendingJoinSource {
@@ -34,7 +35,7 @@ class FirestorePendingJoins implements PendingJoinSource {
 
   @override
   Stream<PendingJoin?> watch(String groupId) {
-    String? description;
+    Map<String, dynamic>? invite;
     var looked = false;
     return _db.doc('memberships/${groupId}_$uid').snapshots().asyncMap((
       doc,
@@ -43,23 +44,25 @@ class FirestorePendingJoins implements PendingJoinSource {
       if (data == null) return null;
       if (!looked) {
         looked = true;
-        description = await _description(data['invitationId']);
+        invite = await _invite(data['invitationId']);
       }
       return PendingJoin(
         status: data['status'] as String? ?? '',
         requestedAt: (data['createdAt'] as Timestamp?)?.toDate(),
         decidedAt: (data['updatedAt'] as Timestamp?)?.toDate(),
-        description: description,
+        groupName: _text(invite?['groupName']),
+        description: _text(invite?['description']),
       );
     });
   }
 
-  Future<String?> _description(Object? code) async {
+  static String? _text(Object? v) =>
+      v is String && v.trim().isNotEmpty ? v : null;
+
+  Future<Map<String, dynamic>?> _invite(Object? code) async {
     if (code is! String) return null;
     try {
-      final invite = await _db.doc('invitations/$code').get();
-      final text = invite.data()?['description'];
-      return text is String && text.trim().isNotEmpty ? text : null;
+      return (await _db.doc('invitations/$code').get()).data();
     } on FirebaseException {
       return null; // Expired or switched-off codes are unreadable.
     }

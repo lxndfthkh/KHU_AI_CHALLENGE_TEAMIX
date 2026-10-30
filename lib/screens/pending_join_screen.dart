@@ -52,7 +52,7 @@ class PendingJoinScreen extends StatelessWidget {
             return ListView(
               padding: const EdgeInsets.fromLTRB(20, 8, 20, 28),
               children: [
-                _header(join?.description),
+                _header(join),
                 const SizedBox(height: 14),
                 ..._body(context, join),
               ],
@@ -63,55 +63,108 @@ class PendingJoinScreen extends StatelessWidget {
     ),
   );
 
-  Widget _header(String? description) => Container(
-    padding: const EdgeInsets.fromLTRB(17, 15, 17, 15),
-    decoration: BoxDecoration(
-      color: _palette.background,
-      borderRadius: BorderRadius.circular(22),
-      border: Border.all(color: teamixCardBorder),
-    ),
-    child: Row(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Container(
-          width: 31,
-          height: 31,
-          decoration: BoxDecoration(
-            color: teamixBackground,
-            borderRadius: BorderRadius.circular(10),
+  /// Which group was asked and where the request stands, at a glance.
+  Widget _header(PendingJoin? join) {
+    final name = join?.groupName ?? groupName;
+    final description = join?.description;
+    final (label, chip) = switch (join?.status) {
+      'approved' => ('가입 완료', mint),
+      'rejected' => ('승인되지 않음', butter),
+      _ => ('승인 대기 중', teamixBackground),
+    };
+    return Container(
+      key: const ValueKey('pending-header'),
+      padding: const EdgeInsets.fromLTRB(17, 15, 17, 15),
+      decoration: BoxDecoration(
+        color: _palette.background,
+        borderRadius: BorderRadius.circular(22),
+        border: Border.all(color: teamixCardBorder),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            '참여를 요청한 모임',
+            style: TextStyle(
+              fontSize: 11,
+              fontWeight: FontWeight.w700,
+              color: _palette.accent,
+            ),
           ),
-          child: Icon(Icons.schedule, color: _palette.accent, size: 21),
-        ),
-        const SizedBox(width: 12),
-        Expanded(
-          child: Column(
+          const SizedBox(height: 8),
+          Row(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text(
-                groupName,
-                style: const TextStyle(
-                  fontSize: 15,
-                  fontWeight: FontWeight.w800,
-                  color: ink,
+              Container(
+                width: 31,
+                height: 31,
+                decoration: BoxDecoration(
+                  color: teamixBackground,
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                child: Icon(Icons.schedule, color: _palette.accent, size: 21),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      name,
+                      style: const TextStyle(
+                        fontSize: 17,
+                        fontWeight: FontWeight.w800,
+                        color: ink,
+                      ),
+                    ),
+                    if (description != null) ...[
+                      const SizedBox(height: 4),
+                      Text(
+                        description,
+                        style: TextStyle(
+                          fontSize: 12,
+                          height: 1.5,
+                          color: _palette.accent,
+                        ),
+                      ),
+                    ],
+                  ],
                 ),
               ),
-              if (description != null) ...[
-                const SizedBox(height: 5),
-                Text(
-                  description,
+            ],
+          ),
+          const SizedBox(height: 12),
+          Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 4),
+                decoration: BoxDecoration(
+                  color: chip,
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Text(
+                  label,
                   style: TextStyle(
-                    fontSize: 12,
-                    height: 1.5,
+                    fontSize: 11,
+                    fontWeight: FontWeight.w800,
                     color: _palette.accent,
                   ),
                 ),
-              ],
+              ),
+              const SizedBox(width: 8),
+              Text(
+                '${_date(join?.requestedAt)} 요청',
+                style: const TextStyle(
+                  fontSize: 11,
+                  color: teamixRequestForeground,
+                ),
+              ),
             ],
           ),
-        ),
-      ],
-    ),
-  );
+        ],
+      ),
+    );
+  }
 
   List<Widget> _body(BuildContext context, PendingJoin? join) =>
       switch (join?.status) {
@@ -135,7 +188,7 @@ class PendingJoinScreen extends StatelessWidget {
             key: const ValueKey('pending-approved'),
             color: mint,
             title: '가입됐어요',
-            body: '이제 내 모임 목록에서 $groupName을(를) 열 수 있어요.',
+            body: '이제 내 모임 목록에서 ${join!.groupName ?? groupName}을(를) 열 수 있어요.',
           ),
           const SizedBox(height: 14),
           FilledButton(

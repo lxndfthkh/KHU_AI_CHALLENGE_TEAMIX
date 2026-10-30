@@ -78,6 +78,18 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('가입 대기'), findsOneWidget);
+    final header = find.byKey(const ValueKey('pending-header'));
+    for (final text in [
+      '참여를 요청한 모임',
+      '주말 산책 모임',
+      '승인 대기 중',
+      '2026년 10월 30일 요청',
+    ]) {
+      expect(
+        find.descendant(of: header, matching: find.text(text)),
+        findsOneWidget,
+      );
+    }
     expect(find.text('토요일 아침마다 함께 걸어요.'), findsOneWidget);
     expect(find.text('참여 요청 보냄'), findsOneWidget);
     expect(find.text('2026년 10월 30일'), findsOneWidget);
@@ -89,6 +101,21 @@ void main() {
     expect(find.byKey(const ValueKey('pending-rejected')), findsOneWidget);
     expect(find.textContaining('2026년 10월 31일'), findsOneWidget);
     expect(find.text('임원진 확인 중'), findsNothing);
+    expect(find.text('승인되지 않음'), findsOneWidget);
+  });
+
+  testWidgets('홈 카드 이름을 모르면 초대 코드의 모임 이름을 보여준다', (tester) async {
+    final db = await seeded();
+    await tester.pumpWidget(
+      app(
+        PendingJoinScreen(
+          groupName: '승인 대기 중인 모임',
+          request: FirestorePendingJoins(db, 'me').watch('walk'),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(find.text('주말 산책 모임'), findsOneWidget);
   });
 
   testWidgets('승인되면 가입 완료 안내와 돌아가기 버튼을 보여준다', (tester) async {
