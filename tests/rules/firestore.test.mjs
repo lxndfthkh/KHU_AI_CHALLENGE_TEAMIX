@@ -40,7 +40,9 @@ beforeEach(async () => {
         themeColor: 'mint', status: 'active', createdAt: old, updatedAt: old }),
       ...Object.entries(members).map(([uid, [role, status]]) =>
         setDoc(ref(s, `memberships/g_${uid}`), membership(uid, role, status))),
-      setDoc(ref(s, 'invitations/hash'), { groupId: 'g', expiresAt: future, active: true, createdBy: 'admin', createdAt: old }),
+      ...Object.entries({ ABCD2345: [true, future], EXPRD234: [true, old], QFFQ2345: [false, future] }).map(
+        ([code, [active, expiresAt]]) => setDoc(ref(s, `invitations/${code}`), { groupId: 'g', groupName: '메이커스',
+          description: '시연', active, expiresAt, createdBy: 'admin', createdAt: old })),
       setDoc(ref(s, 'activities/a'), { groupId: 'g', title: '활동', description: '', createdBy: 'admin',
         themeColor: 'mint', capacity: 20, targetTeamSize: 4, deadlineAt: future, status: 'recruiting',
         createdAt: old, updatedAt: old }),
@@ -184,10 +186,68 @@ test('멤버십은 클라이언트가 만들거나 역할을 올릴 수 없다',
   await assertFails(deleteDoc(ref(db('member'), 'memberships/g_member')));
 });
 
-test('초대 토큰은 누구도 직접 읽거나 쓸 수 없다', async () => {
-  await assertFails(getDoc(ref(db('admin'), 'invitations/hash')));
+const inSixDays = () => Timestamp.fromMillis(Date.now() + 6 * 864e5);
+const invitation = (extra = {}) => ({ groupId: 'g', groupName: '메이커스', description: '시연', active: true,
+  expiresAt: inSixDays(), createdBy: 'admin', createdAt: serverTimestamp(), ...extra });
+
+test('초대 코드: 운영진만 모임 정보 그대로 7일 이내로 발급한다', async () => {
+  await assertSucceeds(setDoc(ref(db('admin'), 'invitations/NEWC2345'), invitation()));
+  await assertFails(setDoc(ref(db('member'), 'invitations/NEWC2346'), invitation({ createdBy: 'member' })));
+  await assertFails(setDoc(ref(db('outsider'), 'invitations/NEWC2347'), invitation({ createdBy: 'outsider' })));
+  for (const extra of [{ groupName: '다른 이름' }, { description: '다른 소개' }, { active: false },
+    { expiresAt: Timestamp.fromMillis(Date.now() + 8 * 864e5) }, { expiresAt: old }, { createdBy: 'member' },
+    { memberCount: 3 }]) {
+    await assertFails(setDoc(ref(db('admin'), 'invitations/NEWC2348'), invitation(extra)));
+  }
+  await assertFails(setDoc(ref(db('admin'), 'invitations/short1'), invitation()));
+  // An existing code can't be overwritten.
+  await assertFails(setDoc(ref(db('admin'), 'invitations/ABCD2345'), invitation()));
+});
+
+test('초대 코드: 아는 코드만 조회하고 목록은 못 본다', async () => {
+  await assertSucceeds(getDoc(ref(db('outsider'), 'invitations/ABCD2345')));
+  await assertFails(getDoc(ref(anon(), 'invitations/ABCD2345')));
+  await assertFails(getDoc(ref(db('outsider'), 'invitations/EXPRD234')));
+  await assertFails(getDoc(ref(db('outsider'), 'invitations/QFFQ2345')));
   await assertFails(getDocs(collection(db('admin'), 'invitations')));
-  await assertFails(setDoc(ref(db('admin'), 'invitations/new'), { groupId: 'g' }));
+  await assertFails(getDocs(query(collection(db('admin'), 'invitations'), where('groupId', '==', 'g'))));
+  await assertFails(updateDoc(ref(db('member'), 'invitations/ABCD2345'), { active: false }));
+  await assertFails(updateDoc(ref(db('admin'), 'invitations/ABCD2345'), { expiresAt: inSixDays() }));
+  await assertSucceeds(updateDoc(ref(db('admin'), 'invitations/ABCD2345'), { active: false }));
+  await assertFails(deleteDoc(ref(db('admin'), 'invitations/ABCD2345')));
+});
+
+const joinRequest = (uid, extra = {}) => ({ groupId: 'g', userId: uid, displayName: uid, role: 'member',
+  status: 'pending', invitationId: 'ABCD2345', createdAt: serverTimestamp(), updatedAt: serverTimestamp(), ...extra });
+
+test('참여 요청: 유효한 코드로 본인 승인 대기만 만들 수 있다', async () => {
+  await assertSucceeds(setDoc(ref(db('outsider'), 'memberships/g_outsider'), joinRequest('outsider')));
+  await assertSucceeds(getDoc(ref(db('outsider'), 'memberships/g_outsider')));
+  // Still pending: the group itself stays hidden.
+  await assertFails(getDoc(ref(db('outsider'), 'groups/g')));
+});
+
+test('참여 요청: 잘못된 코드·남의 요청·역할 올리기·중복 요청은 거절된다', async () => {
+  const s = db('newbie');
+  for (const extra of [{ invitationId: 'EXPRD234' }, { invitationId: 'QFFQ2345' }, { invitationId: 'NONE2345' },
+    { status: 'approved' }, { role: 'admin' }, { userId: 'other' }, { displayName: '' }, { note: 'x' }]) {
+    await assertFails(setDoc(ref(s, 'memberships/g_newbie'), joinRequest('newbie', extra)));
+  }
+  await env.withSecurityRulesDisabled((c) => setDoc(ref(c.firestore(), 'groups/h'),
+    { name: '다른 모임', description: '', ownerId: 'admin', createdAt: old, updatedAt: old }));
+  await assertFails(setDoc(ref(s, 'memberships/h_newbie'), joinRequest('newbie', { groupId: 'h' })));
+  await assertFails(setDoc(ref(s, 'memberships/g_other'), joinRequest('other')));
+  // Existing members, pending or rejected users can't re-request over their document.
+  for (const uid of ['member', 'applicant', 'rejected']) {
+    await assertFails(setDoc(ref(db(uid), `memberships/g_${uid}`), joinRequest(uid)));
+  }
+});
+
+test('참여 요청 확인: 본인 멤버십만 모임별로 조회할 수 있다', async () => {
+  const mine = (uid, g = 'g') => query(collection(db(uid), 'memberships'), where('userId', '==', uid),
+    where('groupId', '==', g));
+  assert.equal((await assertSucceeds(getDocs(mine('applicant')))).size, 1);
+  assert.equal((await assertSucceeds(getDocs(mine('outsider')))).size, 0);
 });
 
 test('소모임: 회원은 본문과 질문, 운영진만 편성 설정과 후기 집계를 읽는다', async () => {

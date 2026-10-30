@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../theme.dart';
 import '../data/demo_group_repository.dart';
+import '../widgets/invite_code_dialog.dart';
 import 'group_card_palette.dart';
 import 'subgroup_detail_screen.dart';
 import 'matching_settings_screen.dart';
@@ -13,6 +14,7 @@ class GroupHome extends StatelessWidget {
     this.groupName = '경희 메이커스',
     this.isOperator = false,
     this.palette = GroupCardPalette.defaultJoined,
+    this.onIssueInvite,
   });
 
   final String groupName;
@@ -20,6 +22,9 @@ class GroupHome extends StatelessWidget {
 
   /// Same colors as this group's card on the groups home.
   final GroupCardPalette palette;
+
+  /// Issues a real invite code; null keeps the demo notice.
+  final Future<String> Function()? onIssueInvite;
   void _detail(BuildContext context, DemoSubgroup subgroup) {
     Navigator.of(context).push<void>(MaterialPageRoute<void>(
       builder: (_) => SubgroupDetailScreen(
@@ -196,7 +201,9 @@ class GroupHome extends StatelessWidget {
                     child: _Action(
                       icon: Icons.north_east,
                       text: '초대 공유',
-                      onTap: () => _preview(context, '초대 공유'),
+                      onTap: onIssueInvite == null
+                          ? () => _preview(context, '초대 공유')
+                          : () => showInviteCodeDialog(context, onIssueInvite!),
                     ),
                   ),
                   const SizedBox(width: 8),

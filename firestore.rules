@@ -54,6 +54,33 @@ service cloud.firestore {
         && existsAfter(/databases/$(database)/documents/groups/$(d.groupId))
         && getAfter(/databases/$(database)/documents/groups/$(d.groupId)).data.ownerId == request.auth.uid;
     }
+    // Invite codes without a server: the document ID is the code, so a client
+    // can only get one it already knows (no list). Admins issue them.
+    function validInvitation(code, d) {
+      return code.matches('^[A-HJ-NP-Z2-9]{8}$')
+        && d.keys().hasOnly(['groupId','groupName','description','active','expiresAt','createdBy','createdAt'])
+        && d.keys().hasAll(['groupId','groupName','description','active','expiresAt','createdBy','createdAt'])
+        && d.groupId is string && admin(d.groupId)
+        && d.groupName == get(/databases/$(database)/documents/groups/$(d.groupId)).data.name
+        && d.description == get(/databases/$(database)/documents/groups/$(d.groupId)).data.description
+        && d.createdBy == request.auth.uid && d.active == true && d.createdAt == request.time
+        && d.expiresAt is timestamp && d.expiresAt > request.time
+        && d.expiresAt <= request.time + duration.value(7, 'd');
+    }
+    function liveInvitation(code, gid) {
+      let path = /databases/$(database)/documents/invitations/$(code);
+      return exists(path) && get(path).data.groupId == gid
+        && get(path).data.active == true && get(path).data.expiresAt > request.time;
+    }
+    function validJoinRequest(id, d) {
+      return d.keys().hasOnly(['groupId','userId','displayName','role','status','invitationId','createdAt','updatedAt'])
+        && d.keys().hasAll(['groupId','userId','displayName','role','status','invitationId','createdAt','updatedAt'])
+        && d.groupId is string && id == d.groupId + '_' + request.auth.uid
+        && d.userId == request.auth.uid && shortString(d.displayName, 40)
+        && d.role == 'member' && d.status == 'pending'
+        && d.createdAt == request.time && d.updatedAt == request.time
+        && d.invitationId is string && liveInvitation(d.invitationId, d.groupId);
+    }
     match /groups/{gid} {
       allow read: if member(gid);
       allow create: if signedIn() && !gid.matches('.*_.*') && validNewGroup(request.resource.data)
@@ -63,10 +90,19 @@ service cloud.firestore {
     match /memberships/{id} {
       allow read: if signedIn() && (resource.data.userId == request.auth.uid || admin(resource.data.groupId)
         || (member(resource.data.groupId) && resource.data.status == 'approved'));
-      allow create: if signedIn() && validCreatorMembership(id, request.resource.data);
+      allow create: if signedIn() && (validCreatorMembership(id, request.resource.data)
+        || validJoinRequest(id, request.resource.data));
       allow update, delete: if false;
     }
-    match /invitations/{id} { allow read, write: if false; }
+    match /invitations/{code} {
+      allow get: if signedIn() && resource.data.active == true && resource.data.expiresAt > request.time;
+      allow list: if false;
+      allow create: if signedIn() && validInvitation(code, request.resource.data);
+      allow update: if admin(resource.data.groupId)
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['active'])
+        && request.resource.data.active == false;
+      allow delete: if false;
+    }
     match /activities/{aid} {
       allow read: if member(resource.data.groupId);
       allow write: if false;

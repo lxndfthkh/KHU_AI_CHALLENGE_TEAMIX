@@ -16,6 +16,7 @@ class MyGroupsHome extends StatelessWidget {
     this.demoMode = false,
     this.busy = false,
     this.onToggleDemoGroups,
+    this.onIssueInvite,
   });
 
   /// `null` while the first snapshot is loading.
@@ -27,6 +28,9 @@ class MyGroupsHome extends StatelessWidget {
   final bool demoMode;
   final bool busy;
   final VoidCallback? onToggleDemoGroups;
+
+  /// Issues an invite code for a group ID; null in demo mode.
+  final Future<String> Function(String groupId)? onIssueInvite;
 
   void _add(BuildContext context) {
     showModalBottomSheet<void>(
@@ -96,7 +100,7 @@ class MyGroupsHome extends StatelessWidget {
               Text(
                 demoMode
                     ? '디자인 시연 모드 · 실제 계정에 연결되지 않았어요.'
-                    : '내 모임과 모임 만들기는 Firestore에 연결돼 있어요. 모임 참가는 서버 기능 연결 후 지원돼요.',
+                    : '내 모임, 모임 만들기, 초대 코드 참여는 Firestore에 연결돼 있어요. 가입 승인은 아직 지원하지 않아요.',
                 style: const TextStyle(color: teamixMuted),
               ),
               if (demoMode && onToggleDemoGroups != null)
@@ -163,6 +167,9 @@ class MyGroupsHome extends StatelessWidget {
               groupName: group.name,
               isOperator: group.isOperator,
               palette: palette,
+              onIssueInvite: onIssueInvite == null || !group.isOperator
+                  ? null
+                  : () => onIssueInvite!(group.groupId),
             ),
       ),
     );
