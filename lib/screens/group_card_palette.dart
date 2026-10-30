@@ -17,13 +17,6 @@ class GroupCardPalette {
   static const pending = GroupCardPalette(lilac, teamixPurpleAccent);
   static const defaultJoined = GroupCardPalette(mint, teamixPrimary);
 
-  static GroupCardPalette fromTheme(String? themeColor,
-      {GroupCardPalette fallback = defaultJoined}) => switch (themeColor) {
-    'mint' => defaultJoined,
-    'peach' => joined[1],
-    'lilac' => pending,
-    _ => fallback,
-  };
   static GroupCardPalette forGroup(int joinedIndex, {bool isPending = false}) {
     if (isPending) return pending;
     return joined[joinedIndex % joined.length];

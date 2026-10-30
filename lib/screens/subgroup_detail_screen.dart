@@ -1,10 +1,16 @@
 import 'package:flutter/material.dart';
 
+import '../data/activity_backend.dart';
 import '../data/demo_group_repository.dart';
 import '../data/firestore_activities_source.dart';
+import '../data/formation_backend.dart';
+import '../models/activity.dart';
 import '../theme.dart';
+import '../widgets/my_team_card.dart';
+import 'formation_screen.dart';
 import 'group_card_palette.dart';
 import 'matching_settings_screen.dart';
+import 'registration_screen.dart';
 
 /// UI branching only. Server/rules must enforce actual permissions.
 class SubgroupDetailScreen extends StatelessWidget {
@@ -15,6 +21,10 @@ class SubgroupDetailScreen extends StatelessWidget {
     this.activity,
     required this.isOperator,
     this.palette = GroupCardPalette.defaultJoined,
+    this.registration,
+    this.onApply,
+    this.onManageFormation,
+    this.myTeam,
   });
 
   final String groupName;
@@ -24,6 +34,28 @@ class SubgroupDetailScreen extends StatelessWidget {
 
   /// The parent group's color from the groups home.
   final GroupCardPalette palette;
+
+  /// The caller's own registration; null keeps the "준비 중" notice.
+  final Stream<Registration?>? registration;
+
+  /// Opens the survey (new or edit); null when not recruiting.
+  final void Function(Registration? current)? onApply;
+
+  /// Opens the real formation screen; null keeps the previous behavior.
+  final VoidCallback? onManageFormation;
+
+  /// The participant's published team, if any.
+  final Widget? myTeam;
+
+  Widget _applyButton(String label, VoidCallback? onPressed) => FilledButton(
+    style: FilledButton.styleFrom(
+      backgroundColor: teamixAddBackground,
+      foregroundColor: teamixAddForeground,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
+    ),
+    onPressed: onPressed,
+    child: Text(label),
+  );
 
   void _pending(BuildContext context, String feature) {
     ScaffoldMessenger.of(context)
@@ -244,6 +276,7 @@ class SubgroupDetailScreen extends StatelessWidget {
                   ),
                 ),
               ),
+              ?myTeam,
               if (isOperator) ...[
                 const SizedBox(height: 22),
                 Material(
@@ -296,14 +329,15 @@ class SubgroupDetailScreen extends StatelessWidget {
                               child: Text('신청 현황 · $participantCount명'),
                             ),
                             OutlinedButton(
-                              onPressed: activity != null
+                              onPressed: onManageFormation ??
+                                  (activity != null
                                   ? () => _pending(context, '팀 편성 관리')
                                   : () => Navigator.of(context).push<void>(
                                       MaterialPageRoute<void>(
                                         builder: (_) =>
                                             const MatchingSettingsScreen(),
                                       ),
-                                    ),
+                                    )),
                               child: const Text('팀 편성 관리 →'),
                             ),
                           ],
@@ -329,17 +363,24 @@ class SubgroupDetailScreen extends StatelessWidget {
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  FilledButton(
-                    style: FilledButton.styleFrom(
-                      backgroundColor: teamixAddBackground,
-                      foregroundColor: teamixAddForeground,
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(15),
-                      ),
+                  if (registration == null)
+                    _applyButton('참가 신청하기', () => _pending(context, '참가 신청'))
+                  else
+                    StreamBuilder<Registration?>(
+                      stream: registration,
+                      builder: (context, snapshot) {
+                        final current = snapshot.data;
+                        final submitted = current?.submitted ?? false;
+                        return _applyButton(
+                          onApply == null
+                              ? (submitted ? '신청 완료 · 모집 마감' : '모집이 마감됐어요')
+                              : submitted
+                              ? '신청 완료 · 응답 수정하기'
+                              : '참가 신청하기',
+                          onApply == null ? null : () => onApply!(current),
+                        );
+                      },
                     ),
-                    onPressed: () => _pending(context, '참가 신청'),
-                    child: const Text('참가 신청하기'),
-                  ),
                   const SizedBox(height: 9),
                   Text(
                     isOperator
@@ -369,8 +410,16 @@ class RealSubgroupDetailScreen extends StatefulWidget {
     required this.isOperator,
     required this.palette,
     this.themeColor,
+    this.activityBackend,
+    this.formationBackend,
   });
   final ActivitiesSource source;
+
+  /// Registration, questions and my team; null keeps the notices.
+  final ActivityBackend? activityBackend;
+
+  /// Operators only; null when FORMATION_URL isn't configured.
+  final FormationBackend? formationBackend;
   final String activityId, groupId, groupName;
   final String? themeColor;
   final bool isOperator;
@@ -382,10 +431,70 @@ class RealSubgroupDetailScreen extends StatefulWidget {
 
 class _RealSubgroupDetailScreenState extends State<RealSubgroupDetailScreen> {
   late Stream<ActivityRecord?> stream;
+
+  // Created once, like the detail stream, so rebuilds keep one listener.
+  late final Stream<Registration?>? registration = widget.activityBackend
+      ?.myRegistration(widget.groupId, widget.activityId);
+
   @override
   void initState() {
     super.initState();
     stream = widget.source.watchActivity(widget.activityId);
+  }
+
+  Future<void> _apply(
+    ActivityBackend backend,
+    ActivityRecord activity,
+    Registration? current,
+  ) async {
+    final List<ActivityQuestion> questions;
+    try {
+      questions = await backend.questions(activity.id);
+    } catch (_) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('설문을 불러오지 못했어요.')),
+        );
+      }
+      return;
+    }
+    if (!mounted) return;
+    final editing = current?.submitted ?? false;
+    Navigator.of(context).push<void>(MaterialPageRoute<void>(
+      builder: (_) => RegistrationScreen(
+        activity: activity,
+        questions: questions,
+        palette: widget.palette,
+        initialAnswers: editing ? current!.answers : const {},
+        onSubmit: (answers) => editing
+            ? backend.updateRegistration(activity.id, answers)
+            : backend.submitRegistration(activity.id, answers),
+      ),
+    ));
+  }
+
+  Future<void> _manageFormation(ActivityBackend backend) async {
+    final formation = widget.formationBackend;
+    if (formation == null) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+        content: Text('편성 서버 주소가 설정되지 않았어요. FORMATION_URL로 실행해 주세요.'),
+      ));
+      return;
+    }
+    // Labels only; the screen still works with raw option IDs.
+    final questions = await backend
+        .questions(widget.activityId)
+        .catchError((_) => const <ActivityQuestion>[]);
+    if (!mounted) return;
+    Navigator.of(context).push<void>(MaterialPageRoute<void>(
+      builder: (_) => FormationScreen(
+        groupId: widget.groupId,
+        activity: widget.source.watchActivity(widget.activityId),
+        backend: formation,
+        questions: questions,
+        palette: widget.palette,
+      ),
+    ));
   }
 
   @override
@@ -421,17 +530,26 @@ class _RealSubgroupDetailScreenState extends State<RealSubgroupDetailScreen> {
           body: Center(child: Text(message)),
         );
       }
+      final backend = widget.activityBackend;
       return SubgroupDetailScreen(
         groupName: widget.groupName,
         activity: activity,
         isOperator: widget.isOperator,
-        palette: GroupCardPalette.fromTheme(
-          activity!.themeColor,
-          fallback: GroupCardPalette.fromTheme(
-            widget.themeColor,
-            fallback: widget.palette,
-          ),
-        ),
+        registration: registration,
+        onApply: backend == null || !activity!.recruiting
+            ? null
+            : (current) => _apply(backend, activity, current),
+        onManageFormation: backend == null || !widget.isOperator
+            ? null
+            : () => _manageFormation(backend),
+        myTeam: backend == null
+            ? null
+            : MyTeamCard(
+                team: () => backend.myTeam(widget.groupId, widget.activityId),
+                questions: () => backend.questions(widget.activityId),
+                palette: widget.palette,
+              ),
+        palette: widget.palette,
       );
     },
   );

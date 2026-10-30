@@ -1,9 +1,12 @@
 import 'package:flutter/material.dart';
 
 import '../theme.dart';
+import '../data/activity_backend.dart';
 import '../data/demo_group_repository.dart';
 import '../data/firestore_activities_source.dart';
+import '../data/formation_backend.dart';
 import '../widgets/invite_code_dialog.dart';
+import 'create_activity_screen.dart';
 import 'group_card_palette.dart';
 import 'subgroup_detail_screen.dart';
 import 'matching_settings_screen.dart';
@@ -20,12 +23,32 @@ class GroupHome extends StatelessWidget {
     this.groupId,
     this.themeColor,
     this.activitiesSource,
+    this.activityBackend,
+    this.formationBackend,
   });
 
   final String groupName;
   final String? groupId, themeColor;
   final ActivitiesSource? activitiesSource;
+
+  /// Subgroup creation, registrations and my team; null in demo mode.
+  final ActivityBackend? activityBackend;
+
+  /// Formation server client for operators; null if not configured.
+  final FormationBackend? formationBackend;
   final bool isOperator;
+
+  void _createActivity(BuildContext context, ActivityBackend backend) {
+    Navigator.of(context).push<void>(
+      MaterialPageRoute<void>(
+        builder: (_) => CreateActivityScreen(
+          groupName: groupName,
+          palette: palette,
+          onCreate: (activity) => backend.createActivity(groupId!, activity),
+        ),
+      ),
+    );
+  }
 
   /// Same colors as this group's card on the groups home.
   final GroupCardPalette palette;
@@ -227,7 +250,9 @@ class GroupHome extends StatelessWidget {
                       child: _Action(
                         icon: Icons.add,
                         text: '소모임 창설',
-                        onTap: () => _preview(context, '소모임 창설'),
+                        onTap: activityBackend == null || groupId == null
+                            ? () => _preview(context, '소모임 창설')
+                            : () => _createActivity(context, activityBackend!),
                       ),
                     ),
                   ],
@@ -311,6 +336,8 @@ class GroupHome extends StatelessWidget {
                   palette: palette,
                   themeColor: themeColor,
                   isOperator: isOperator,
+                  activityBackend: activityBackend,
+                  formationBackend: formationBackend,
                 )
               else
                 for (final subgroup in DemoGroupRepository.subgroupsFor(
@@ -489,12 +516,16 @@ class _RealActivities extends StatefulWidget {
     required this.palette,
     required this.isOperator,
     this.themeColor,
+    this.activityBackend,
+    this.formationBackend,
   });
   final ActivitiesSource source;
   final String groupId, groupName;
   final String? themeColor;
   final GroupCardPalette palette;
   final bool isOperator;
+  final ActivityBackend? activityBackend;
+  final FormationBackend? formationBackend;
   @override
   State<_RealActivities> createState() => _RealActivitiesState();
 }
@@ -538,13 +569,8 @@ class _RealActivitiesState extends State<_RealActivities> {
           for (final activity in activities)
             Builder(
               builder: (context) {
-                final palette = GroupCardPalette.fromTheme(
-                  activity.themeColor,
-                  fallback: GroupCardPalette.fromTheme(
-                    widget.themeColor,
-                    fallback: widget.palette,
-                  ),
-                );
+                // Subgroups share their group's card color.
+                final palette = widget.palette;
                 return Padding(
                   padding: const EdgeInsets.only(bottom: 10),
                   child: _Activity(
@@ -566,6 +592,8 @@ class _RealActivitiesState extends State<_RealActivities> {
                           themeColor: widget.themeColor,
                           palette: widget.palette,
                           isOperator: widget.isOperator,
+                          activityBackend: widget.activityBackend,
+                          formationBackend: widget.formationBackend,
                         ),
                       ),
                     ),

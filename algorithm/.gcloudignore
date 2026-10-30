@@ -1,0 +1,6 @@
+# Upload for `gcloud run deploy --source algorithm` (formation server).
+#!include:.gitignore
+.gcloudignore
+tests/
+examples/
+test_results.txt

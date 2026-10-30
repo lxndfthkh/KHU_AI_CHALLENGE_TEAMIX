@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import '../data/activity_backend.dart';
+import '../data/formation_backend.dart';
 import '../data/group_admin.dart';
 import '../data/firestore_activities_source.dart';
 import '../models/group_summary.dart';
@@ -21,6 +23,8 @@ class MyGroupsHome extends StatelessWidget {
     this.onToggleDemoGroups,
     this.groupAdmin,
     this.activitiesSource,
+    this.activityBackend,
+    this.formationBackend,
   });
 
   /// `null` while the first snapshot is loading.
@@ -37,6 +41,12 @@ class MyGroupsHome extends StatelessWidget {
   /// Firestore operator actions (invites, join requests); null in demo mode.
   final GroupAdmin? groupAdmin;
   final ActivitiesSource? activitiesSource;
+
+  /// Subgroup creation, registrations and my team; null in demo mode.
+  final ActivityBackend? activityBackend;
+
+  /// Formation server client for operators; null if not configured.
+  final FormationBackend? formationBackend;
 
   void _add(BuildContext context) {
     showModalBottomSheet<void>(
@@ -174,6 +184,8 @@ class MyGroupsHome extends StatelessWidget {
           groupId: group.groupId,
           themeColor: group.themeColor,
           activitiesSource: activitiesSource ?? group.activitiesSource,
+          activityBackend: activityBackend,
+          formationBackend: group.isOperator ? formationBackend : null,
           isOperator: group.isOperator,
           palette: palette,
           onIssueInvite: admin == null
@@ -200,9 +212,12 @@ class MyGroupsHome extends StatelessWidget {
   }
 
   Widget _card(BuildContext context, GroupSummary group, int joinedIndex) {
-    final palette = group.pending ? GroupCardPalette.pending
-        : GroupCardPalette.fromTheme(group.themeColor,
-            fallback: GroupCardPalette.forGroup(joinedIndex));
+    // Four-color rotation by position, not groups.themeColor (always mint
+    // for groups created in the app); pending stays lavender.
+    final palette = GroupCardPalette.forGroup(
+      joinedIndex,
+      isPending: group.pending,
+    );
 
     return _GroupCard(
       name: group.name,

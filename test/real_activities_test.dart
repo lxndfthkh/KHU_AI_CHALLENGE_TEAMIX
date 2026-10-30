@@ -45,8 +45,9 @@ void main() {
     await tester.pump();
     await tester.pump(const Duration(seconds: 1));
     expect(source.requestedGroup, 'g');
+    // First joined card in the four-color rotation, whatever themeColor says.
     expect(tester.widget<GroupHome>(find.byType(GroupHome)).palette,
-      same(GroupCardPalette.joined[1]));
+      same(GroupCardPalette.joined[0]));
     source.list.add([record()]);
     await tester.pump();
     await tester.ensureVisible(find.text('소모임 상세보기 ↗'));
@@ -63,7 +64,8 @@ void main() {
     expect(find.text('실제 모임 · 스터디'), findsOneWidget);
     expect(find.byKey(const ValueKey('subgroup-operator-panel')), findsNothing);
     final screen = tester.widget<SubgroupDetailScreen>(find.byType(SubgroupDetailScreen));
-    expect(screen.palette, same(GroupCardPalette.pending));
+    // The detail keeps the group card's color, not the activity's themeColor.
+    expect(screen.palette, same(GroupCardPalette.joined[0]));
     source.detail.add(record(count: 8));
     await tester.pump();
     expect(find.text('8 / 18명'), findsOneWidget);

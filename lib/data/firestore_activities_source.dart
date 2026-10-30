@@ -6,18 +6,23 @@ class ActivityRecord {
     required this.title, required this.description, required this.status,
     required this.participantCount, required this.capacity,
     required this.targetTeamSize, required this.deadlineAt,
-    this.themeColor, this.type});
+    this.themeColor, this.type, this.publishedVersion});
   final String id, groupId, title, description, status;
   final String? themeColor, type;
   final int participantCount, capacity, targetTeamSize;
   final DateTime deadlineAt;
+  /// Set once teams are published (publications/{id}_v{n}).
+  final int? publishedVersion;
+  bool get recruiting => status == 'recruiting';
+  bool get published => publishedVersion != null;
   factory ActivityRecord.fromFirestore(String id, Map<String, dynamic> d) =>
     ActivityRecord(id: id, groupId: d['groupId'] as String,
       title: d['title'] as String, description: d['description'] as String,
       status: d['status'] as String, participantCount: d['participantCount'] as int,
       capacity: d['capacity'] as int, targetTeamSize: d['targetTeamSize'] as int,
       deadlineAt: (d['deadlineAt'] as Timestamp).toDate(),
-      themeColor: d['themeColor'] as String?, type: d['type'] as String?);
+      themeColor: d['themeColor'] as String?, type: d['type'] as String?,
+      publishedVersion: (d['publishedVersion'] as num?)?.toInt());
   String get statusLabel => switch (status) {
     'recruiting' => '모집 중', 'closed' => '모집 마감',
     'active' => '활동 중', 'ended' => '활동 종료',
