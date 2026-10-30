@@ -1,11 +1,30 @@
 /// Public per-team summary the formation server stores with a draft
 /// (algorithm/formation.py assess → drafts/{a}.validation.summary).
+/// A team's score on one personality axis (formation.py assess): [sum] of
+/// item answers over [respondents] people answering [items] questions each.
+class TraitScore {
+  const TraitScore({
+    required this.sum,
+    required this.items,
+    required this.respondents,
+  });
+
+  final int sum;
+  final int items;
+  final int respondents;
+
+  /// Team average on the 1-5 answer scale.
+  double get mean =>
+      items <= 0 || respondents <= 0 ? 0 : sum / (items * respondents);
+}
+
 class TeamSummary {
   const TeamSummary({
     this.size = 0,
     this.commonTimes = const [],
     this.roleCounts = const {},
     this.experienceMean,
+    this.personality = const {},
   });
 
   factory TeamSummary.fromJson(Map<String, dynamic>? d) {
@@ -23,6 +42,16 @@ class TeamSummary {
       experienceMean: experience is Map
           ? (experience['mean'] as num?)?.toDouble()
           : null,
+      personality: {
+        for (final e in ((d['personality'] as Map?) ?? const {}).entries)
+          if (e.value is Map)
+            '${e.key}': TraitScore(
+              sum: ((e.value as Map)['sum'] as num?)?.toInt() ?? 0,
+              items: ((e.value as Map)['items'] as num?)?.toInt() ?? 0,
+              respondents:
+                  ((e.value as Map)['respondents'] as num?)?.toInt() ?? 0,
+            ),
+      },
     );
   }
 
@@ -34,6 +63,9 @@ class TeamSummary {
   /// Role option ID -> how many members want it.
   final Map<String, int> roleCounts;
   final double? experienceMean;
+
+  /// Personality axis ID -> team score. Team averages only, never people.
+  final Map<String, TraitScore> personality;
 }
 
 class TeamDraft {
@@ -146,6 +178,7 @@ const criterionLabels = {
   'time': '가능 시간',
   'experience': '경험 수준',
   'interest': '관심 분야',
+  'personality': '성향 균형',
   'size': '인원 균형',
 };
 
@@ -159,6 +192,7 @@ class FormationSettings {
     this.requiredRoles = const [],
     this.learningEnabled = true,
     this.questionCriteria = const {},
+    this.traitLabels = const {},
   });
 
   factory FormationSettings.fromFirestore(Map<String, dynamic> d) =>
@@ -181,6 +215,11 @@ class FormationSettings {
           for (final e in ((d['questionCriteria'] as Map?) ?? const {}).entries)
             '${e.key}': '${e.value}',
         },
+        traitLabels: {
+          for (final t in (d['traits'] as List?) ?? const [])
+            if (t is Map && t['id'] is String)
+              t['id'] as String: (t['label'] as String?) ?? t['id'] as String,
+        },
       );
 
   /// Empty before recruiting closes (teams are estimated then).
@@ -197,6 +236,16 @@ class FormationSettings {
 
   /// questionId -> criterion.
   final Map<String, String> questionCriteria;
+
+  /// Personality axis ID -> label, in the order set at creation.
+  final Map<String, String> traitLabels;
+
+  /// Priority to show when none is saved yet.
+  List<String> get defaultPriority => [
+    if (traitLabels.isNotEmpty) 'personality',
+    ...questionCriteria.values,
+    'size',
+  ];
 }
 
 /// What the operator chose on the settings screen; sent as the server's
