@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../data/activity_backend.dart';
 import '../data/formation_backend.dart';
 import '../data/group_admin.dart';
+import '../data/learning_admin.dart';
 import '../data/firestore_activities_source.dart';
 import '../data/firestore_notifications.dart';
 import '../data/firestore_pending_join.dart';
@@ -11,6 +12,7 @@ import '../theme.dart';
 import 'group_card_palette.dart';
 import 'group_home.dart';
 import 'join_requests_screen.dart';
+import 'learning_screen.dart';
 import 'members_screen.dart';
 import 'notifications_screen.dart';
 import 'pending_join_screen.dart';
@@ -31,6 +33,7 @@ class MyGroupsHome extends StatelessWidget {
     this.activityBackend,
     this.formationBackend,
     this.pendingJoins,
+    this.learningAdmin,
     this.notifications,
   });
 
@@ -57,6 +60,9 @@ class MyGroupsHome extends StatelessWidget {
 
   /// The caller's own join requests, for the pending screen; null in demo mode.
   final PendingJoinSource? pendingJoins;
+
+  /// Learning controls; the menu entry shows only for service admins.
+  final LearningAdmin? learningAdmin;
 
   /// The caller's notifications for the header bell; null in demo mode.
   final NotificationSource? notifications;
@@ -185,6 +191,30 @@ class MyGroupsHome extends StatelessWidget {
                       style: TextStyle(fontSize: 11),
                     ),
                   ),
+                ),
+              if (learningAdmin != null)
+                FutureBuilder<bool>(
+                  future: learningAdmin!.isServiceAdmin(),
+                  builder: (context, snapshot) => snapshot.data != true
+                      ? const SizedBox.shrink()
+                      : ListTile(
+                          contentPadding: EdgeInsets.zero,
+                          leading: const Icon(Icons.auto_graph),
+                          title: const Text('학습 관리'),
+                          subtitle: const Text(
+                            '서비스 관리자 · 후기로 편성 보정값 학습',
+                            style: TextStyle(fontSize: 11),
+                          ),
+                          onTap: () {
+                            Navigator.pop(sheet);
+                            Navigator.of(context).push<void>(
+                              MaterialPageRoute<void>(
+                                builder: (_) =>
+                                    LearningScreen(admin: learningAdmin!),
+                              ),
+                            );
+                          },
+                        ),
                 ),
               if (demoMode && onToggleDemoGroups != null)
                 ListTile(
@@ -440,7 +470,9 @@ class MyGroupsHome extends StatelessWidget {
                     if (notifications case final source?) ...[
                       NotificationBell(
                         source: source,
-                        onTap: busy ? null : () => _openNotifications(context, source),
+                        onTap: busy
+                            ? null
+                            : () => _openNotifications(context, source),
                       ),
                       const SizedBox(width: 12),
                     ],

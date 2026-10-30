@@ -15,6 +15,8 @@ import 'data/group_repository.dart';
 import 'data/user_profile.dart';
 import 'models/group_summary.dart';
 import 'screens/my_groups_home.dart';
+import 'data/feedback_learning_api.dart';
+import 'data/learning_admin.dart';
 import 'services/formation_api.dart';
 import 'screens/onboarding/auth.dart';
 import 'screens/onboarding/create_group.dart';
@@ -31,11 +33,7 @@ export 'theme.dart' show ink, coral, mint, butter, lilac;
 // Auth, the groups home, group creation, invite codes and join approval are
 // real; subgroups and team formation still use demo data.
 class TeamixApp extends StatelessWidget {
-  const TeamixApp({
-    super.key,
-    this.demoMode = false,
-    this.showEmpty = false,
-  });
+  const TeamixApp({super.key, this.demoMode = false, this.showEmpty = false});
 
   final bool demoMode;
   final bool showEmpty;
@@ -45,19 +43,12 @@ class TeamixApp extends StatelessWidget {
     title: 'TEAMIX',
     debugShowCheckedModeBanner: false,
     theme: buildTeamixTheme(),
-    home: EntryScreen(
-      demoMode: demoMode,
-      showEmpty: showEmpty,
-    ),
+    home: EntryScreen(demoMode: demoMode, showEmpty: showEmpty),
   );
 }
 
 class EntryScreen extends StatefulWidget {
-  const EntryScreen({
-    super.key,
-    this.demoMode = false,
-    this.showEmpty = false,
-  });
+  const EntryScreen({super.key, this.demoMode = false, this.showEmpty = false});
 
   final bool demoMode;
   final bool showEmpty;
@@ -162,9 +153,8 @@ class _EntryScreenState extends State<EntryScreen> {
     if (mounted) setState(() => page = p);
   }
 
-  void toast(String text) => ScaffoldMessenger.of(context).showSnackBar(
-    SnackBar(content: Text(text)),
-  );
+  void toast(String text) =>
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(text)));
 
   /// Signed-in user whose data lives in Firestore; null in demo mode.
   User? get firestoreUser => widget.demoMode ? null : currentUser;
@@ -235,7 +225,10 @@ class _EntryScreenState extends State<EntryScreen> {
   ActivityBackend? backendFor(String uid) {
     if (activityBackend == null || activityBackendUid != uid) {
       activityBackendUid = uid;
-      activityBackend = FirebaseActivityBackend(FirebaseFirestore.instance, uid);
+      activityBackend = FirebaseActivityBackend(
+        FirebaseFirestore.instance,
+        uid,
+      );
     }
     return activityBackend;
   }
@@ -252,6 +245,18 @@ class _EntryScreenState extends State<EntryScreen> {
     return formationBackend ??= ServerFormationBackend(
       FirebaseFirestore.instance,
       FormationApi(baseUrl: Uri.parse(base)),
+    );
+  }
+
+  LearningAdmin? learningAdminCache;
+
+  /// Needs the formation server, which runs the learning jobs.
+  LearningAdmin? get learningAdmin {
+    if (formationUrl.isEmpty) return null;
+    final base = formationUrl.endsWith('/') ? formationUrl : '$formationUrl/';
+    return learningAdminCache ??= ServerLearningAdmin(
+      FormationApi(baseUrl: Uri.parse(base)),
+      FeedbackLearningApi(),
     );
   }
 
@@ -375,11 +380,11 @@ class _EntryScreenState extends State<EntryScreen> {
 
     try {
       if (signup) {
-        final result =
-            await FirebaseAuth.instance.createUserWithEmailAndPassword(
-          email: email.text.trim(),
-          password: password.text,
-        );
+        final result = await FirebaseAuth.instance
+            .createUserWithEmailAndPassword(
+              email: email.text.trim(),
+              password: password.text,
+            );
 
         signupName = nickname.text.trim();
         try {
@@ -589,10 +594,8 @@ class _EntryScreenState extends State<EntryScreen> {
             terms = value ?? false;
             privacy = value ?? false;
           }),
-          onTermsChanged: (value) =>
-              setState(() => terms = value ?? false),
-          onPrivacyChanged: (value) =>
-              setState(() => privacy = value ?? false),
+          onTermsChanged: (value) => setState(() => terms = value ?? false),
+          onPrivacyChanged: (value) => setState(() => privacy = value ?? false),
           onDetail: termsDetail,
           onNext: () => go('signup'),
           onBack: () => go('welcome'),
@@ -719,6 +722,7 @@ class _EntryScreenState extends State<EntryScreen> {
             pendingJoins: uid == null
                 ? null
                 : FirestorePendingJoins(FirebaseFirestore.instance, uid),
+            learningAdmin: uid == null ? null : learningAdmin,
             notifications: uid == null ? null : notificationsFor(uid),
           );
 
@@ -726,10 +730,8 @@ class _EntryScreenState extends State<EntryScreen> {
           ? home(DemoGroupRepository.summariesOf(groupRepository))
           : StreamBuilder<List<GroupSummary>>(
               stream: myGroupsFor(uid),
-              builder: (context, snapshot) => home(
-                snapshot.data,
-                loadFailed: snapshot.hasError,
-              ),
+              builder: (context, snapshot) =>
+                  home(snapshot.data, loadFailed: snapshot.hasError),
             );
     } else {
       content = Scaffold(

@@ -10,20 +10,27 @@ from formation import Invalid
 from service import Denied, Missing, Stale
 from validated_service import ValidatedFormationService
 from repository import FirestoreRepository
+import learning_api as L
 
 bearer=HTTPBearer(auto_error=False)
 ROUTES={'/precheck':'precheck','/closeRecruitment':'close','/updateMatchingSettings':'settings',
         '/generateDraft':'run','/moveMember':'edit','/discardDraft':'discard','/publishTeams':'publish'}
 
-def current_uid(credentials: HTTPAuthorizationCredentials=Depends(bearer)):
+def current_token(credentials: HTTPAuthorizationCredentials=Depends(bearer)):
     if not credentials or credentials.scheme.lower() != 'bearer':
         raise HTTPException(401,'로그인이 필요합니다')
     try:
         if not firebase_admin._apps: firebase_admin.initialize_app()
-        token=auth.verify_id_token(credentials.credentials,check_revoked=True)
-        return token['uid']
+        return auth.verify_id_token(credentials.credentials,check_revoked=True)
     except Exception:
         raise HTTPException(401,'유효한 로그인이 필요합니다') from None
+
+def current_uid(token=Depends(current_token)):
+    return token['uid']
+
+def get_db():
+    if not firebase_admin._apps: firebase_admin.initialize_app()
+    return firestore.client()
 
 def get_service():
     if not firebase_admin._apps: firebase_admin.initialize_app()
@@ -56,6 +63,19 @@ def create_app():
     @app.post('/solve')
     def retired():
         raise HTTPException(410,'/generateDraft를 사용해 주세요. 서버가 입력을 조회합니다')
+    # Service admin only (Auth custom claim admin: true), like functions/src/models.js.
+    def learning(action):
+        def endpoint(token=Depends(current_token),db=Depends(get_db)):
+            try:
+                L.require_admin(token)
+                return action(db)
+            except L.NotAdmin: raise HTTPException(403,'서비스 관리자만 할 수 있어요') from None
+            except Exception:
+                logging.error('Learning request failed')
+                raise HTTPException(500,'처리 중 오류가 발생했습니다') from None
+        return endpoint
+    app.post('/learning/status')(learning(L.status))
+    app.post('/learning/train')(learning(L.train_now))
     @app.get('/health')
     def health(): return {'ok':True}
     return app

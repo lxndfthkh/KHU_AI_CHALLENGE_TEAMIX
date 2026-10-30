@@ -1,7 +1,7 @@
 FROM python:3.12-slim
 WORKDIR /app
-COPY requirements-stage3.txt .
-RUN pip install --no-cache-dir -r requirements-stage3.txt
+COPY requirements-stage3.txt requirements-learning.txt ./
+RUN pip install --no-cache-dir -r requirements-learning.txt
 COPY . .
 USER 65532:65532
 EXPOSE 8080
