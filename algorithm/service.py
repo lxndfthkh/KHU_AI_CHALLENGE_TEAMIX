@@ -97,7 +97,9 @@ def snapshot(s, body, include_private=True):
          'traits':[{'id':t['id'],'label':t['label'],'size':len(t['items'])} for t in traits],
          'published':s['published'],'draft':draft['assignments'],'locks':draft['locks'],
          'required_roles':roles,'require_common_time':common,'seed':body.get('seed',42),'limit':body.get('limit',10),
-         'weightFactors':learning(s)['b'],
+         # The active model covers every criterion; pass only the ones this activity uses
+         # (the engine rejects unknown keys).
+         'weightFactors':{q:v for q,v in (learning(s)['b'] or {}).items() if q in {c['key'] for c in criteria}} or None,
          'private_preferences':[{'source':p['ownerUid'],'target':p['targetUid'],'confirmed':True} for p in s['preferences'].values() if p.get('status') == 'active'] if include_private else []}
     if body.get('kind') == 'partial': raw['scopeTeamIds']=body.get('scopeTeamIds')
     require(body.get('kind','initial') in ('initial','republish','partial'),'실행 종류 확인 필요')
