@@ -86,6 +86,11 @@ service cloud.firestore {
         && request.resource.data.readAt == request.time;
       allow create, delete: if false;
     }
+    // Learning consent (편성학습_v3 12장). Written only by the setLearningConsent command.
+    match /consents/{uid} {
+      allow read: if signedIn() && request.auth.uid == uid;
+      allow write: if false;
+    }
     match /appConfig/{id} { allow read: if signedIn(); allow write: if false; }
     match /_schema/{id} { allow read, write: if false; }
     match /{document=**} { allow read, write: if false; }

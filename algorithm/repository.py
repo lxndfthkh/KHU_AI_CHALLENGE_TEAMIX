@@ -10,7 +10,7 @@ this module is the only place that knows main's storage layout:
   registrations/{a}_{uid}                   submitted|cancelled, answers keyed by qid
   placementPreferences/{g}_{uid}_{target}   active; server-only input
   drafts/{a}                                one working draft per activity (admin read)
-  publications/{a}_v{n}                     immutable publication (admin read)
+  publications/{a}_v{n}                     publication (admin read); only validTo is set later
   teamViews/{a}_{uid}                       participant's own team
   notifications/{a}_v{n}_{uid}              teamPublished | teamChanged
   formationRuns/{run}, serverRuns/{run}     server-only (default-deny paths)
@@ -200,9 +200,13 @@ def translate(g, a, state, pending, stamp):
             if 'state' in value:
                 activity_patch['status'] = STATUS[value['state']]
             settings_patch.update({k: v for k, v in value.items() if k not in ('state', 'publishedVersionId')})
+        elif parts[0] == 'teamVersions' and len(parts) == 2 and 'seq' not in value and 'validTo' in value:
+            # Previous publication ends when the next one starts (membershipRatio in stage 4).
+            out.append(('set', f'publications/{a}_{parts[1]}', {'validTo': value['validTo']}, True))
         elif parts[0] == 'teamVersions' and len(parts) == 2 and 'seq' in value:
             publication = {'activityId': a, 'groupId': g, 'version': value['seq'], 'teams': [],
                            'publishedBy': value['publishedBy'], 'publishedAt': value['publishedAt'],
+                           'validFrom': value.get('validFrom', value['publishedAt']), 'validTo': None,
                            'sourceRunId': value.get('sourceRunId'), 'manuallyEdited': value.get('manuallyEdited', False)}
             activity_patch['publishedVersion'] = value['seq']
         elif parts[0] == 'teamVersions' and len(parts) == 4:

@@ -3,36 +3,14 @@
 // Each handler is (db, uid, data) -> result and runs one transaction; index.js wraps them as callables.
 // Order inside every command: login (caller) -> approved membership -> role -> object state.
 // Admin SDK bypasses firestore.rules, so every check here is the only guard.
-const {FieldValue,Timestamp}=require('firebase-admin/firestore');
+const {Timestamp}=require('firebase-admin/firestore');
 const {createHash,randomInt}=require('node:crypto');
 const V=require('./validation');
 
-class CommandError extends Error{constructor(code,message){super(message);this.code=code;}}
-const fail=(code,message)=>{throw new CommandError(code,message);};
-const now=()=>FieldValue.serverTimestamp();
+const {CommandError,fail,now,membership,requireMember,profile,loadActivity}=require('./common');
 const hash=code=>createHash('sha256').update(code).digest('hex');
 const INVITE_DAYS=7, PREVIEW_LIMIT=20, PREVIEW_WINDOW_MS=10*60*1000;
 
-async function membership(tx,db,g,uid){
-  const s=await tx.get(db.doc(`memberships/${V.id(g)}_${V.id(uid)}`));
-  return s.exists&&s.data().groupId===g&&s.data().userId===uid?{ref:s.ref,data:s.data()}:{ref:s.ref,data:null};
-}
-async function requireMember(tx,db,g,uid,admin=false){
-  const m=await membership(tx,db,g,uid);
-  if(!m.data||m.data.status!=='approved')fail('permission-denied','모임 회원만 할 수 있어요');
-  if(admin&&m.data.role!=='admin')fail('permission-denied','임원진만 할 수 있어요');
-  return m;
-}
-async function profile(tx,db,uid){
-  const s=await tx.get(db.doc(`users/${uid}`));
-  if(!s.exists)fail('failed-precondition','프로필을 먼저 만들어 주세요');
-  return s.data();
-}
-async function loadActivity(tx,db,a){
-  const s=await tx.get(db.doc(`activities/${V.noUnderscore(a)}`));
-  if(!s.exists)fail('not-found','소모임을 찾을 수 없어요');
-  return {ref:s.ref,data:s.data()};
-}
 function newCode(){let c='';for(let i=0;i<10;i++)c+=V.CODE_ALPHABET[randomInt(V.CODE_ALPHABET.length)];return c;}
 async function validInvitation(tx,db,code){
   const s=await tx.get(db.doc(`invitations/${hash(V.inviteCode(code))}`));

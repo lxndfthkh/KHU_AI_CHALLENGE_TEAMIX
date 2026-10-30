@@ -188,6 +188,9 @@ class MainAdapterTests(unittest.TestCase):
         store['activities/a/settings/matching']['teamCapacities'] = {'team_1': 3, 'team_2': 3}
         self.run_and_publish(store)
         self.assertNotIn('teamViews/a_u0', store)
+        self.assertIsNotNone(store['publications/a_v1']['validTo'])
+        self.assertEqual(store['publications/a_v1']['validTo'], store['publications/a_v2']['validFrom'])
+        self.assertIsNone(store['publications/a_v2']['validTo'])
         changed = sorted(k for k in store if k.startswith('notifications/a_v2_'))
         self.assertEqual(changed, [f'notifications/a_v2_{mate}'])
         self.assertEqual(store[f'notifications/a_v2_{mate}']['type'], 'teamChanged')

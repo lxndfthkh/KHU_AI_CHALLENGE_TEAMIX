@@ -8,6 +8,7 @@ const {spawnSync}=require('node:child_process');
 const {initializeApp}=require('firebase-admin/app');
 const {getFirestore,Timestamp}=require('firebase-admin/firestore');
 const C=require('../src/commands');
+const A=require('../src/activity');
 
 const PROJECT=process.env.GCLOUD_PROJECT||'';
 let db;
@@ -155,7 +156,7 @@ test('placement preferences: same-group members only, at most two active, never 
 });
 
 const PYTHON=path.join(__dirname,'../../algorithm/.venv/bin/python');
-test('end to end: data created by stage 1-2 commands is closed, formed and published by stage 3',{skip:!existsSync(PYTHON)&&'algorithm/.venv 없음'},async()=>{
+test('end to end: stage 1-2 data is closed, formed and published by stage 3, then started, ended and reviewed (stage 4)',{skip:!existsSync(PYTHON)&&'algorithm/.venv 없음'},async()=>{
   const {groupId}=await groupWithMembers(4);
   const {activityId}=await C.createActivity(db,'admin',activityInput(groupId));
   for(let i=0;i<4;i++)await C.submitRegistration(db,`u${i}`,{activityId,answers:ANSWERS(i)});
@@ -180,4 +181,12 @@ print(json.dumps({'applied':run['applied'],'seq':pub['seq']}))`;
   const views=await Promise.all([0,1,2,3].map(i=>get(`teamViews/${activityId}_u${i}`)));
   assert.ok(views.every(v=>v&&v.version===1));
   assert.notEqual(views[0].teamId,views[1].teamId,'비공개 선호(u0↔u1)가 반영되어야 함');
+  // Stage 4 on top of the publication stage 3 wrote.
+  const pub=await get(`publications/${activityId}_v1`);
+  assert.ok(pub.validFrom&&pub.validTo===null);
+  await A.startActivity(db,'admin',{activityId});
+  await A.endActivity(db,'admin',{activityId});
+  const fb=await A.submitFeedback(db,'u0',{activityId,scores:{overall:5,schedule:4,roles:4,rejoin:5}});
+  assert.equal(fb.teamId,views[0].teamId);
+  assert.equal(fb.membershipRatio,1);
 });

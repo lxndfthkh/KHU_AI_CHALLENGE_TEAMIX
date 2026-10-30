@@ -75,6 +75,21 @@ class FeedbackLearningApi {
     call('setPlacementPreference', {'groupId': groupId, 'targetUserId': targetUserId, 'confirmed': true});
   Future<Map<String, dynamic>> revokePlacementPreference(String groupId, String targetUserId) =>
     call('revokePlacementPreference', {'groupId': groupId, 'targetUserId': targetUserId});
+  // Stage 4 (functions/src/activity.js).
+  /// Optional learning-use consent (편성학습_v3 12장). Applies to feedback written afterwards.
+  Future<Map<String, dynamic>> setLearningConsent(bool agreed) => call('setLearningConsent', {'agreed': agreed});
+  Stream<DocumentSnapshot<Map<String, dynamic>>> ownConsent() {
+    final uid = _auth.currentUser?.uid;
+    if (uid == null) throw StateError('로그인이 필요해요');
+    return _db.collection('consents').doc(uid).snapshots();
+  }
+  Future<Map<String, dynamic>> startActivity(String activityId) => call('startActivity', {'activityId': activityId});
+  Future<Map<String, dynamic>> endActivity(String activityId) => call('endActivity', {'activityId': activityId});
+  /// scores: overall, schedule, roles, rejoin (1-5). comment: optional, up to 1,000 characters.
+  /// The team is decided by the server from the version that was current when the activity ended.
+  Future<Map<String, dynamic>> submitFeedback(String activityId, Map<String, int> scores, {String? comment}) =>
+    call('submitFeedback', {'activityId': activityId, 'scores': scores, 'comment': ?comment});
+  Future<Map<String, dynamic>> closeFeedback(String activityId) => call('closeFeedback', {'activityId': activityId});
   /// Own preferences only; firestore.rules allow the author to read them.
   Stream<QuerySnapshot<Map<String, dynamic>>> ownPreferences(String groupId) {
     final uid = _auth.currentUser?.uid;

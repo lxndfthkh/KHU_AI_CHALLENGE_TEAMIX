@@ -191,6 +191,16 @@ test('알림은 본인이 읽고 readAt만 서버 시각으로 바꿀 수 있다
   await assertFails(deleteDoc(ref(db('member'), 'notifications/n')));
 });
 
+test('학습 활용 동의는 본인만 읽고 앱이 직접 쓰지 못한다', async () => {
+  await env.withSecurityRulesDisabled(async (context) => {
+    await setDoc(ref(context.firestore(), 'consents/member'), { learning: { agreed: true, version: 'l1', at: old }, updatedAt: old });
+  });
+  await assertSucceeds(getDoc(ref(db('member'), 'consents/member')));
+  await assertFails(getDoc(ref(db('admin'), 'consents/member')));
+  await assertFails(setDoc(ref(db('member'), 'consents/member'), { learning: { agreed: false } }));
+  await assertFails(setDoc(ref(db('other'), 'consents/other'), { learning: { agreed: true } }));
+});
+
 test('앱 설정은 로그인 사용자만 읽고, 스키마 설명과 그 밖의 경로는 막는다', async () => {
   await assertSucceeds(getDoc(ref(db('outsider'), 'appConfig/teamix')));
   await assertFails(getDoc(ref(anon(), 'appConfig/teamix')));
