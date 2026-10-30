@@ -47,6 +47,26 @@ function activity(d){
     targetTeamSize:posInt(d.targetTeamSize,50),deadlineAt:deadline,type:activityType(d.type),questions,matching:matching(d.matching,questions)};
 }
 
+// Fields an operator may change while recruiting; questions stay as created.
+const ACTIVITY_PATCH_KEYS=['title','description','type','capacity','targetTeamSize','deadlineAt'];
+function activityPatch(d){
+  check(plain(d),'Patch required');
+  const keys=Object.keys(d).filter(k=>k!=='activityId');
+  check(keys.length>0&&keys.every(k=>ACTIVITY_PATCH_KEYS.includes(k)),'Only title, description, type, capacity, targetTeamSize, deadlineAt can change');
+  const out={};
+  if('title' in d)out.title=text(d.title,120);
+  if('description' in d)out.description=optionalText(d.description,5000);
+  if('type' in d)out.type=activityType(d.type);
+  if('capacity' in d)out.capacity=posInt(d.capacity,500);
+  if('targetTeamSize' in d)out.targetTeamSize=posInt(d.targetTeamSize,50);
+  if('deadlineAt' in d){
+    const deadline=typeof d.deadlineAt==='string'?Date.parse(d.deadlineAt):d.deadlineAt;
+    check(Number.isSafeInteger(deadline)&&deadline>Date.now(),'Future deadline required');
+    out.deadlineAt=deadline;
+  }
+  return out;
+}
+
 function matching(m,questions){
   check(plain(m),'Matching settings required');
   check(Object.keys(m).every(k=>['method','questionCriteria','priority','requireCommonTime','traits'].includes(k)),'Unknown matching field');
@@ -109,4 +129,4 @@ function answers(input,questions){
 }
 
 const MAX_PREFERENCES=2;
-module.exports={ValidationError,check,plain,text,optionalText,id,noUnderscore,color,activity,matching,answers,MAX_PREFERENCES,CRITERIA,ACTIVITY_TYPES,MAX_TRAITS,MAX_TRAIT_ITEMS};
+module.exports={ValidationError,check,plain,text,optionalText,id,noUnderscore,color,activity,activityPatch,matching,answers,MAX_PREFERENCES,CRITERIA,ACTIVITY_TYPES,MAX_TRAITS,MAX_TRAIT_ITEMS};

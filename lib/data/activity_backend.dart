@@ -25,6 +25,10 @@ abstract interface class ActivityBackend {
   );
   Future<void> cancelRegistration(String activityId);
 
+  /// Operator edit while recruiting; [patch] holds only changed fields
+  /// (title, description, type, capacity, targetTeamSize, deadlineAt ms).
+  Future<void> updateActivity(String activityId, Map<String, Object> patch);
+
   // Activity lifecycle (operators): published → active → ended → closed.
   Future<void> startActivity(String activityId);
   Future<void> endActivity(String activityId);
@@ -143,6 +147,10 @@ class FirebaseActivityBackend implements ActivityBackend {
   @override
   Future<void> cancelRegistration(String activityId) =>
       _api.cancelRegistration(activityId);
+
+  @override
+  Future<void> updateActivity(String activityId, Map<String, Object> patch) =>
+      _api.call('updateActivity', {...patch, 'activityId': activityId});
 
   @override
   Future<void> startActivity(String activityId) =>

@@ -28,6 +28,16 @@ test('activity type: the four learning types, optional for older clients',()=>{
   assert.equal(V.activity({...input(),type:null}).type,null);
   for(const type of ['hobby','STUDY','',1])assert.throws(()=>V.activity({...input(),type}),/activity type/);
 });
+test('activity patch: only open-edit fields, each validated like createActivity',()=>{
+  assert.deepEqual(V.activityPatch({activityId:'a',title:' 새 이름 ',capacity:30}),{title:'새 이름',capacity:30});
+  assert.equal(V.activityPatch({type:'social'}).type,'social');
+  assert.throws(()=>V.activityPatch({activityId:'a'}),/Only/);
+  assert.throws(()=>V.activityPatch({questions:[]}),/Only/);
+  assert.throws(()=>V.activityPatch({status:'closed'}),/Only/);
+  assert.throws(()=>V.activityPatch({capacity:0}));
+  assert.throws(()=>V.activityPatch({deadlineAt:Date.now()-1000}),/Future/);
+  assert.throws(()=>V.activityPatch({type:'hobby'}),/activity type/);
+});
 test('criterion must match question type',()=>{const d=input();d.matching.questionCriteria={time:'role'};assert.throws(()=>V.activity(d),/role needs a single/);});
 test('one question per criterion',()=>{const d=input();d.matching.questionCriteria={time:'time',topic:'time'};assert.throws(()=>V.activity(d));});
 test('matching question must be required',()=>{const d=input();d.matching.questionCriteria={mbti:'role'};assert.throws(()=>V.activity(d),/required/);});

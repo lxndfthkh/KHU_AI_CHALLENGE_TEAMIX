@@ -81,6 +81,11 @@ class FakeBackend implements ActivityBackend {
   @override
   Future<void> updateRegistration(String id, Map<String, Object> a) async =>
       updated.add(a);
+  final edits = <Map<String, Object>>[];
+  @override
+  Future<void> updateActivity(String id, Map<String, Object> patch) async =>
+      edits.add(patch);
+
   final cancelled = <String>[];
   @override
   Future<void> cancelRegistration(String id) async => cancelled.add(id);

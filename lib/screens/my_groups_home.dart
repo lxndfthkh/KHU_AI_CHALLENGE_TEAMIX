@@ -9,6 +9,7 @@ import '../theme.dart';
 import 'group_card_palette.dart';
 import 'group_home.dart';
 import 'join_requests_screen.dart';
+import 'members_screen.dart';
 
 class MyGroupsHome extends StatelessWidget {
   const MyGroupsHome({
@@ -258,6 +259,25 @@ class MyGroupsHome extends StatelessWidget {
           onIssueInvite: admin == null
               ? null
               : () => admin.issueInvitation(group.groupId),
+          onOpenMembers: admin == null
+              ? null
+              : () => Navigator.of(home).push<void>(
+                  MaterialPageRoute<void>(
+                    builder: (_) => MembersScreen(
+                      groupName: group.name,
+                      palette: palette,
+                      members: admin.members(group.groupId),
+                      ownerId: admin.ownerId(group.groupId),
+                      selfId: admin.selfId,
+                      onSetRole: (m, toAdmin) => admin.setMemberRole(
+                        group.groupId,
+                        m.userId,
+                        admin: toAdmin,
+                      ),
+                      onRemove: (m) => admin.removeMember(group.groupId, m.userId),
+                    ),
+                  ),
+                ),
           onOpenJoinRequests: admin == null
               ? null
               : () => Navigator.of(home).push<void>(
