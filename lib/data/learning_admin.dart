@@ -49,11 +49,70 @@ Map<String, double> _doubles(Object? m) => {
       if (e.value is num) '${e.key}': (e.value as num).toDouble(),
 };
 
+/// A subgroup the comparison can form (recruitment closed).
+class CompareTarget {
+  const CompareTarget({
+    required this.groupId,
+    required this.activityId,
+    required this.title,
+    this.groupName = '',
+  });
+
+  factory CompareTarget.fromJson(Map<String, dynamic> j) => CompareTarget(
+    groupId: '${j['groupId']}',
+    activityId: '${j['activityId']}',
+    title: j['title'] as String? ?? '',
+    groupName: j['groupName'] as String? ?? '',
+  );
+
+  final String groupId, activityId, title, groupName;
+}
+
+class CompareTeam {
+  const CompareTeam(this.members, this.commonTimes);
+
+  factory CompareTeam.fromJson(Map<String, dynamic> j) => CompareTeam(
+    [for (final m in (j['members'] as List?) ?? const []) '$m'],
+    [for (final t in (j['commonTimes'] as List?) ?? const []) '$t'],
+  );
+
+  final List<String> members, commonTimes;
+}
+
+/// One roster formed with default weights and with the latest model.
+class FormationCompare {
+  const FormationCompare({
+    required this.before,
+    required this.after,
+    this.modelId,
+    this.b = const {},
+  });
+
+  factory FormationCompare.fromJson(Map<String, dynamic> j) {
+    List<CompareTeam> teams(Object? side) => [
+      if (side is Map)
+        for (final t in (side['teams'] as List?) ?? const [])
+          CompareTeam.fromJson(Map<String, dynamic>.from(t as Map)),
+    ];
+    return FormationCompare(
+      before: teams(j['before']),
+      after: teams(j['after']),
+      modelId: j['modelId'] as String?,
+      b: _doubles(j['b']),
+    );
+  }
+
+  final List<CompareTeam> before, after;
+  final String? modelId;
+  final Map<String, double> b;
+}
+
 class LearningStatus {
   const LearningStatus({
     this.activeModelId,
     this.activeB = const {},
     this.latest,
+    this.targets = const [],
   });
 
   factory LearningStatus.fromJson(Map<String, dynamic> j) {
@@ -64,6 +123,10 @@ class LearningStatus {
       latest: j['latest'] is Map
           ? LearningRun.fromJson(Map<String, dynamic>.from(j['latest'] as Map))
           : null,
+      targets: [
+        for (final t in (j['targets'] as List?) ?? const [])
+          CompareTarget.fromJson(Map<String, dynamic>.from(t as Map)),
+      ],
     );
   }
 
@@ -71,6 +134,9 @@ class LearningStatus {
   final String? activeModelId;
   final Map<String, double> activeB;
   final LearningRun? latest;
+
+  /// Subgroups the before/after comparison can use.
+  final List<CompareTarget> targets;
 }
 
 /// Service admin learning controls: train on demand, then apply or reset.
@@ -81,6 +147,10 @@ abstract interface class LearningAdmin {
 
   /// Extracts closed feedback and trains; a passing model is saved as a candidate.
   Future<LearningStatus> train();
+
+  /// Forms [target]'s roster with default weights and with the latest model.
+  /// Nothing is saved.
+  Future<FormationCompare> compare(CompareTarget target);
 
   /// approveModel + activateModel: formation uses the model's b from now on.
   Future<void> apply(String modelId);
@@ -110,6 +180,15 @@ class ServerLearningAdmin implements LearningAdmin {
   @override
   Future<LearningStatus> train() async =>
       LearningStatus.fromJson(await _formation.learning('train'));
+
+  @override
+  Future<FormationCompare> compare(CompareTarget target) async =>
+      FormationCompare.fromJson(
+        await _formation.learning('compare', {
+          'groupId': target.groupId,
+          'activityId': target.activityId,
+        }),
+      );
 
   @override
   Future<void> apply(String modelId) async {

@@ -209,8 +209,10 @@ class MyGroupsHome extends StatelessWidget {
                             Navigator.pop(sheet);
                             Navigator.of(context).push<void>(
                               MaterialPageRoute<void>(
-                                builder: (_) =>
-                                    LearningScreen(admin: learningAdmin!),
+                                builder: (_) => LearningScreen(
+                                  admin: learningAdmin!,
+                                  formation: formationBackend,
+                                ),
                               ),
                             );
                           },

@@ -43,14 +43,14 @@ class FormationApi {
     catch (_) { throw const TeamixApiException('FORMAT', '편성 응답 형식이 올바르지 않아요'); }
   }
   /// Service-admin learning routes (learning_api.py). Training can take a few minutes.
-  Future<Map<String, dynamic>> learning(String route) async {
-    if (!const {'status', 'train'}.contains(route)) throw ArgumentError('지원하지 않는 작업입니다');
+  Future<Map<String, dynamic>> learning(String route, [Map<String, Object> body = const {}]) async {
+    if (!const {'status', 'train', 'compare'}.contains(route)) throw ArgumentError('지원하지 않는 작업입니다');
     final user = _auth.currentUser;
     if (user == null) throw StateError('로그인이 필요해요');
     final token = await user.getIdToken();
     final response = await _client.post(_base.resolve('learning/$route'), headers: {
       'Content-Type': 'application/json', 'Authorization': 'Bearer $token',
-    }, body: '{}').timeout(const Duration(minutes: 5));
+    }, body: jsonEncode(body)).timeout(const Duration(minutes: 5));
     if (response.statusCode == 403) {
       throw const TeamixApiException('HTTP_403', '서비스 관리자만 할 수 있어요');
     }
