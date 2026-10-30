@@ -6,6 +6,7 @@ import '../data/demo_group_repository.dart';
 import '../data/firestore_activities_source.dart';
 import '../data/formation_backend.dart';
 import '../widgets/invite_code_dialog.dart';
+import 'activity_feedback_flow.dart';
 import 'create_activity_screen.dart';
 import 'group_card_palette.dart';
 import 'subgroup_detail_screen.dart';
@@ -76,6 +77,35 @@ class GroupHome extends StatelessWidget {
         .showSnackBar(SnackBar(content: Text('$feature 기능은 준비 중이에요.')));
   }
 
+  Future<void> _leave(BuildContext context, ActivityBackend backend) async {
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (d) => AlertDialog(
+        title: Text('$groupName에서 나갈까요?'),
+        content: const Text(
+          '공개 전 소모임 신청은 취소되고, 공개된 팀 기록은 남아요. '
+          '다시 들어오려면 초대 코드가 필요해요.',
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(d, false), child: const Text('취소')),
+          TextButton(onPressed: () => Navigator.pop(d, true), child: const Text('나가기')),
+        ],
+      ),
+    );
+    if (ok != true || !context.mounted) return;
+    final messenger = ScaffoldMessenger.of(context);
+    final navigator = Navigator.of(context);
+    try {
+      await backend.leaveGroup(groupId!);
+      navigator.pop();
+      messenger.showSnackBar(SnackBar(content: Text('$groupName에서 나왔어요.')));
+    } catch (_) {
+      messenger.showSnackBar(
+        const SnackBar(content: Text('나가지 못했어요. 혼자 남은 운영진은 나갈 수 없어요.')),
+      );
+    }
+  }
+
   void _more(BuildContext context) {
     showModalBottomSheet<void>(
       context: context,
@@ -93,7 +123,13 @@ class GroupHome extends StatelessWidget {
               title: const Text('소모임 평가하기'),
               onTap: () {
                 Navigator.pop(sheet);
-                _preview(context, '소모임 선택 및 평가');
+                if (activityBackend == null) {
+                  _preview(context, '소모임 선택 및 평가');
+                } else {
+                  ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+                    content: Text('활동이 끝난 소모임의 상세에서 후기를 남길 수 있어요.'),
+                  ));
+                }
               },
             ),
             ListTile(
@@ -101,7 +137,11 @@ class GroupHome extends StatelessWidget {
               title: const Text('모임 나가기'),
               onTap: () {
                 Navigator.pop(sheet);
-                _preview(context, '모임 나가기');
+                if (activityBackend == null || groupId == null) {
+                  _preview(context, '모임 나가기');
+                } else {
+                  _leave(context, activityBackend!);
+                }
               },
             ),
             const SizedBox(height: 12),
@@ -557,7 +597,20 @@ class _RealActivitiesState extends State<_RealActivities> {
       if (snapshot.connectionState == ConnectionState.waiting) {
         return const Center(child: CircularProgressIndicator());
       }
-      final activities = snapshot.data ?? const <ActivityRecord>[];
+      // Ended activities stay only while feedback is open.
+      final activities = [
+        for (final a in snapshot.data ?? const <ActivityRecord>[])
+          if (a.status != 'ended' || a.feedbackOpen) a,
+      ];
+      final backend = widget.activityBackend;
+      if (backend != null) {
+        for (final a in activities.where((a) => a.feedbackOpen)) {
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            if (!mounted) return;
+            maybePromptFeedback(context, backend, widget.groupId, a, widget.palette);
+          });
+        }
+      }
       if (activities.isEmpty) {
         return const Padding(
           padding: EdgeInsets.all(24),
@@ -577,7 +630,9 @@ class _RealActivitiesState extends State<_RealActivities> {
                     title: activity.title,
                     questions:
                         '신청 ${activity.participantCount} / ${activity.capacity}명',
-                    statusLabel: activity.statusLabel,
+                    statusLabel: activity.feedbackOpen
+                        ? '후기 · D-${activity.feedbackDaysLeft(DateTime.now()) ?? 0}'
+                        : activity.statusLabel,
                     typeLabel: activity.typeLabel,
                     color: palette.background,
                     accent: palette.accent,

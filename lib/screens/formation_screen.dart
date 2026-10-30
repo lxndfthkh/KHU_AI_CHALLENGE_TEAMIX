@@ -7,6 +7,7 @@ import '../data/firestore_activities_source.dart';
 import '../models/activity.dart';
 import '../models/formation.dart';
 import '../theme.dart';
+import 'formation_settings_screen.dart';
 import 'group_card_palette.dart';
 
 /// `team_3` -> `3팀`.
@@ -46,6 +47,9 @@ class _FormationScreenState extends State<FormationScreen> {
   Map<String, String> _names = const {};
   List<String> _precheck = const [];
   bool _busy = false;
+
+  /// Teams picked for a partial re-formation after publishing.
+  final _scope = <String>{};
 
   late final Map<String, String> _labels = {
     for (final q in widget.questions)
@@ -200,7 +204,29 @@ class _FormationScreenState extends State<FormationScreen> {
     ),
   );
 
-  Widget _team(FormationDraft draft, TeamDraft team) {
+  void _openSettings(ActivityRecord a) {
+    Navigator.of(context)
+        .push<void>(
+          MaterialPageRoute<void>(
+            builder: (_) => FormationSettingsScreen(
+              activity: a,
+              settings: widget.backend.settings(a.id),
+              learning: widget.backend.learning(widget.groupId, a.id),
+              questions: widget.questions,
+              palette: widget.palette,
+              onSave: (patch) =>
+                  widget.backend.saveSettings(widget.groupId, a.id, patch),
+            ),
+          ),
+        )
+        .then((_) => _refresh());
+  }
+
+  Widget _team(
+    FormationDraft draft,
+    TeamDraft team, {
+    bool selectable = false,
+  }) {
     final s = team.summary;
     final facts = [
       if (s.commonTimes.isNotEmpty)
@@ -215,13 +241,30 @@ class _FormationScreenState extends State<FormationScreen> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(
-            '${teamLabel(team.teamId)} · ${team.members.length}명',
-            style: const TextStyle(
-              fontSize: 15,
-              fontWeight: FontWeight.w800,
-              color: ink,
-            ),
+          Row(
+            children: [
+              Expanded(
+                child: Text(
+                  '${teamLabel(team.teamId)} · ${team.members.length}명',
+                  style: const TextStyle(
+                    fontSize: 15,
+                    fontWeight: FontWeight.w800,
+                    color: ink,
+                  ),
+                ),
+              ),
+              if (selectable)
+                FilterChip(
+                  key: ValueKey('scope-${team.teamId}'),
+                  label: Text(_scope.contains(team.teamId) ? '선택됨' : '선택'),
+                  selected: _scope.contains(team.teamId),
+                  onSelected: (on) => setState(
+                    () => on
+                        ? _scope.add(team.teamId)
+                        : _scope.remove(team.teamId),
+                  ),
+                ),
+            ],
           ),
           for (final f in facts)
             Text(
@@ -234,26 +277,45 @@ class _FormationScreenState extends State<FormationScreen> {
               '아직 팀원이 없어요.',
               style: TextStyle(fontSize: 12, color: teamixMuted),
             ),
-          for (final uid in team.members) _memberRow(draft, uid),
+          for (final uid in team.members) _memberRow(draft, uid, inTeam: true),
         ],
       ),
     );
   }
 
-  Widget _memberRow(FormationDraft draft, String uid) => Row(
-    children: [
-      if (draft.locked.contains(uid))
-        const Padding(
-          padding: EdgeInsets.only(right: 4),
-          child: Icon(Icons.push_pin_outlined, size: 14, color: teamixMuted),
+  Widget _memberRow(FormationDraft draft, String uid, {bool inTeam = false}) {
+    final locked = draft.locked.contains(uid);
+    return Row(
+      children: [
+        if (locked)
+          const Padding(
+            padding: EdgeInsets.only(right: 4),
+            child: Icon(Icons.push_pin_outlined, size: 14, color: teamixMuted),
+          ),
+        Expanded(child: Text(_name(uid), style: const TextStyle(fontSize: 13))),
+        // Pinned members keep their team in AI re-formation (v4 ③ 고정/해제).
+        if (inTeam)
+          TextButton(
+            key: ValueKey('lock-$uid'),
+            onPressed: _busy
+                ? null
+                : () => _run(
+                    () => widget.backend.setLocked(
+                      widget.groupId,
+                      _activity!.id,
+                      uid,
+                      locked: !locked,
+                    ),
+                  ),
+            child: Text(locked ? '고정 해제' : '고정'),
+          ),
+        TextButton(
+          onPressed: _busy ? null : () => _chooseTeam(draft, uid),
+          child: const Text('옮기기'),
         ),
-      Expanded(child: Text(_name(uid), style: const TextStyle(fontSize: 13))),
-      TextButton(
-        onPressed: _busy ? null : () => _chooseTeam(draft, uid),
-        child: const Text('옮기기'),
-      ),
-    ],
-  );
+      ],
+    );
+  }
 
   List<Widget> _body(ActivityRecord a, FormationDraft? draft) {
     if (a.recruiting) {
@@ -275,6 +337,15 @@ class _FormationScreenState extends State<FormationScreen> {
     }
     final hasDraft = draft?.usable ?? false;
     return [
+      if (!a.published)
+        Padding(
+          padding: const EdgeInsets.only(bottom: 12),
+          child: OutlinedButton.icon(
+            onPressed: _busy ? null : () => _openSettings(a),
+            icon: const Icon(Icons.tune),
+            label: const Text('편성 설정 · 팀 수, 우선순위, 필수 조건'),
+          ),
+        ),
       if (_precheck.isNotEmpty) _problems('편성 전에 확인할 것', _precheck),
       _step(
         a.published ? '다시 편성하기' : '2. AI 편성',
@@ -305,7 +376,25 @@ class _FormationScreenState extends State<FormationScreen> {
       if (hasDraft) ...[
         if (!draft!.valid && draft.conflicts.isNotEmpty)
           _problems('공개 전에 해결해야 해요', draft.conflicts),
-        for (final t in draft.teams) _team(draft, t),
+        for (final t in draft.teams) _team(draft, t, selectable: a.published),
+        if (a.published) ...[
+          OutlinedButton(
+            onPressed: _busy || _scope.isEmpty
+                ? null
+                : () => _run(
+                    () => widget.backend.generatePartial(widget.groupId, a.id, [
+                      for (final t in draft.teams)
+                        if (_scope.contains(t.teamId)) t.teamId,
+                    ]),
+                  ),
+            child: Text(
+              _scope.isEmpty
+                  ? '다시 편성할 팀을 골라 주세요'
+                  : '선택한 팀만 다시 편성 (${_scope.length})',
+            ),
+          ),
+          const SizedBox(height: 10),
+        ],
         if (draft.unassigned.isNotEmpty)
           _card(
             color: lilac,
@@ -333,6 +422,15 @@ class _FormationScreenState extends State<FormationScreen> {
           textAlign: TextAlign.center,
           style: TextStyle(fontSize: 11, color: teamixMuted),
         ),
+        if (a.published)
+          TextButton(
+            onPressed: _busy
+                ? null
+                : () => _run(
+                    () => widget.backend.discardDraft(widget.groupId, a.id),
+                  ),
+            child: const Text('수정 초안 버리기 · 공개된 팀은 그대로'),
+          ),
       ] else if (a.published)
         _step('공개된 팀', '팀이 공개돼 있어요. 바꾸려면 다시 편성해 주세요.'),
     ];

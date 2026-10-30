@@ -119,6 +119,51 @@ class FakeFormation implements FormationBackend {
     calls.add('publish');
     return const FormationOutcome(true, '팀을 공개했어요.');
   }
+
+  final settingsStream = StreamController<FormationSettings?>.broadcast();
+  FormationSettingsPatch? saved;
+  @override
+  Stream<FormationSettings?> settings(String a) => settingsStream.stream;
+  @override
+  Future<(bool, Map<String, String>)> learning(String g, String a) async =>
+      (true, {'time': 'up', 'experience': 'down'});
+  @override
+  Future<FormationOutcome> saveSettings(
+    String g,
+    String a,
+    FormationSettingsPatch patch,
+  ) async {
+    saved = patch;
+    calls.add('settings');
+    return const FormationOutcome(true, '편성 설정을 저장했어요.');
+  }
+
+  @override
+  Future<FormationOutcome> setLocked(
+    String g,
+    String a,
+    String uid, {
+    required bool locked,
+  }) async {
+    calls.add('${locked ? 'lock' : 'unlock'} $uid');
+    return const FormationOutcome(true, '고정');
+  }
+
+  @override
+  Future<FormationOutcome> generatePartial(
+    String g,
+    String a,
+    List<String> teamIds,
+  ) async {
+    calls.add('partial $teamIds');
+    return const FormationOutcome(true, '부분');
+  }
+
+  @override
+  Future<FormationOutcome> discardDraft(String g, String a) async {
+    calls.add('discard');
+    return const FormationOutcome(true, '버림');
+  }
 }
 
 Widget screen(FakeFormation backend, ActivityRecord activity) => MaterialApp(

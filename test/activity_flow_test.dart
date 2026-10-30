@@ -81,8 +81,39 @@ class FakeBackend implements ActivityBackend {
   @override
   Future<void> updateRegistration(String id, Map<String, Object> a) async =>
       updated.add(a);
+  final cancelled = <String>[];
   @override
-  Future<void> cancelRegistration(String id) async {}
+  Future<void> cancelRegistration(String id) async => cancelled.add(id);
+
+  final calls = <String>[];
+  final feedback = StreamController<Map<String, int>?>.broadcast();
+  final summary = StreamController<FeedbackSummary?>.broadcast();
+  final consent = StreamController<bool>.broadcast();
+  @override
+  Future<void> startActivity(String id) async => calls.add('start');
+  @override
+  Future<void> endActivity(String id) async => calls.add('end');
+  @override
+  Future<void> closeFeedback(String id) async => calls.add('closeFeedback');
+  @override
+  Stream<Map<String, int>?> myFeedback(String g, String a) => feedback.stream;
+  @override
+  Future<void> submitFeedback(String id, Map<String, int> scores) async =>
+      calls.add('feedback $scores');
+  @override
+  Stream<FeedbackSummary?> feedbackSummary(String id) => summary.stream;
+  @override
+  Future<List<String>> publishedTeamIds(String id, int v) async =>
+      ['team_1', 'team_2'];
+  @override
+  Stream<bool> learningConsent() => consent.stream;
+  @override
+  Future<void> setLearningConsent(bool agreed) async =>
+      calls.add('consent $agreed');
+  @override
+  Future<void> leaveGroup(String groupId) async => calls.add('leave');
+  @override
+  Future<void> deleteAccount() async => calls.add('delete');
 }
 
 Widget app(Widget home) => MaterialApp(theme: buildTeamixTheme(), home: home);
