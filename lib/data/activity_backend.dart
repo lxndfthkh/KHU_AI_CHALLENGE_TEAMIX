@@ -25,6 +25,9 @@ abstract interface class ActivityBackend {
   );
   Future<void> cancelRegistration(String activityId);
 
+  /// Everyone who signed up (operators only), with display names.
+  Stream<List<Applicant>> applicants(String groupId, String activityId);
+
   /// Operator edit while recruiting; [patch] holds only changed fields
   /// (title, description, type, capacity, targetTeamSize, deadlineAt ms).
   Future<void> updateActivity(String activityId, Map<String, Object> patch);
@@ -46,6 +49,23 @@ abstract interface class ActivityBackend {
   Future<void> setLearningConsent(bool agreed);
   Future<void> leaveGroup(String groupId);
   Future<void> deleteAccount();
+}
+
+/// One `registrations/{a}_{uid}` as an operator sees it.
+class Applicant {
+  const Applicant({
+    required this.userId,
+    required this.name,
+    required this.submitted,
+    this.answers = const {},
+  });
+
+  final String userId;
+  final String name;
+
+  /// false when the registration was cancelled.
+  final bool submitted;
+  final Map<String, Object?> answers;
 }
 
 class FirebaseActivityBackend implements ActivityBackend {
@@ -120,6 +140,39 @@ class FirebaseActivityBackend implements ActivityBackend {
   @override
   Future<void> cancelRegistration(String activityId) =>
       _api.cancelRegistration(activityId);
+
+  /// groupId and activityId equality let the rules prove the admin read.
+  @override
+  Stream<List<Applicant>> applicants(String groupId, String activityId) {
+    Map<String, String>? names;
+    return _db
+        .collection('registrations')
+        .where('groupId', isEqualTo: groupId)
+        .where('activityId', isEqualTo: activityId)
+        .snapshots()
+        .asyncMap((s) async {
+          names ??= {
+            for (final d in (await _db
+                    .collection('memberships')
+                    .where('groupId', isEqualTo: groupId)
+                    .get())
+                .docs)
+              '${d.data()['userId']}':
+                  d.data()['displayName'] as String? ?? '이름 없음',
+          };
+          return [
+            for (final d in s.docs)
+              Applicant(
+                userId: '${d.data()['userId']}',
+                name: names!['${d.data()['userId']}'] ?? '이름 없음',
+                submitted: d.data()['status'] == 'submitted',
+                answers: Map<String, Object?>.from(
+                  d.data()['answers'] as Map? ?? const {},
+                ),
+              ),
+          ];
+        });
+  }
 
   @override
   Future<void> updateActivity(String activityId, Map<String, Object> patch) =>

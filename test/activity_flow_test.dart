@@ -81,6 +81,11 @@ class FakeBackend implements ActivityBackend {
   @override
   Future<void> updateRegistration(String id, Map<String, Object> a) async =>
       updated.add(a);
+  final applicantList = StreamController<List<Applicant>>.broadcast();
+  @override
+  Stream<List<Applicant>> applicants(String groupId, String activityId) =>
+      applicantList.stream;
+
   final edits = <Map<String, Object>>[];
   @override
   Future<void> updateActivity(String id, Map<String, Object> patch) async =>

@@ -112,10 +112,16 @@ class MyGroupsHome extends StatelessWidget {
           '혼자 남은 운영진이면 먼저 다른 운영진을 두어야 해요.',
         ),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(d, false), child: const Text('취소')),
+          TextButton(
+            onPressed: () => Navigator.pop(d, false),
+            child: const Text('취소'),
+          ),
           TextButton(
             onPressed: () => Navigator.pop(d, true),
-            child: const Text('삭제', style: TextStyle(color: teamixAddForeground)),
+            child: const Text(
+              '삭제',
+              style: TextStyle(color: teamixAddForeground),
+            ),
           ),
         ],
       ),
@@ -200,7 +206,10 @@ class MyGroupsHome extends StatelessWidget {
               if (activityBackend != null)
                 ListTile(
                   contentPadding: EdgeInsets.zero,
-                  leading: const Icon(Icons.person_off_outlined, color: teamixAddForeground),
+                  leading: const Icon(
+                    Icons.person_off_outlined,
+                    color: teamixAddForeground,
+                  ),
                   title: const Text(
                     '계정 삭제',
                     style: TextStyle(color: teamixAddForeground),
@@ -265,6 +274,7 @@ class MyGroupsHome extends StatelessWidget {
           onIssueInvite: admin == null
               ? null
               : () => admin.issueInvitation(group.groupId),
+          onDeactivateInvite: admin?.deactivateInvitation,
           onOpenMembers: admin == null
               ? null
               : () => Navigator.of(home).push<void>(
@@ -280,7 +290,8 @@ class MyGroupsHome extends StatelessWidget {
                         m.userId,
                         admin: toAdmin,
                       ),
-                      onRemove: (m) => admin.removeMember(group.groupId, m.userId),
+                      onRemove: (m) =>
+                          admin.removeMember(group.groupId, m.userId),
                     ),
                   ),
                 ),

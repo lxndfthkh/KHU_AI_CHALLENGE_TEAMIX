@@ -6,6 +6,7 @@ import '../data/demo_group_repository.dart';
 import '../data/firestore_activities_source.dart';
 import '../data/formation_backend.dart';
 import '../widgets/invite_code_dialog.dart';
+import 'activity_admin.dart';
 import 'activity_feedback_flow.dart';
 import 'create_activity_screen.dart';
 import 'group_card_palette.dart';
@@ -20,6 +21,7 @@ class GroupHome extends StatelessWidget {
     this.isOperator = false,
     this.palette = GroupCardPalette.defaultJoined,
     this.onIssueInvite,
+    this.onDeactivateInvite,
     this.onOpenJoinRequests,
     this.onOpenMembers,
     this.groupId,
@@ -40,6 +42,105 @@ class GroupHome extends StatelessWidget {
   final FormationBackend? formationBackend;
   final bool isOperator;
 
+  ActivityAdmin? get _admin =>
+      activitiesSource == null || activityBackend == null || groupId == null
+      ? null
+      : ActivityAdmin(
+          source: activitiesSource!,
+          backend: activityBackend!,
+          formation: formationBackend,
+          groupId: groupId!,
+          palette: palette,
+        );
+
+  Future<void> _pickForFormation(BuildContext context) async {
+    final admin = _admin;
+    if (admin == null) return _preview(context, '팀 편성');
+    final open = [
+      for (final a in await activitiesSource!.watchActivities(groupId!).first)
+        if (a.status == 'recruiting' || a.status == 'closed') a,
+    ];
+    if (!context.mounted) return;
+    if (open.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('편성할 소모임이 없어요. 소모임을 먼저 만들어 주세요.')),
+      );
+      return;
+    }
+    final picked = await showModalBottomSheet<ActivityRecord>(
+      context: context,
+      backgroundColor: teamixBackground,
+      builder: (sheet) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Padding(
+              padding: EdgeInsets.all(18),
+              child: Text(
+                '어느 소모임을 편성할까요?',
+                style: TextStyle(fontSize: 17, fontWeight: FontWeight.w700),
+              ),
+            ),
+            for (final a in open)
+              ListTile(
+                title: Text(a.title),
+                subtitle: Text('${a.statusLabel} · 신청 ${a.participantCount}명'),
+                onTap: () => Navigator.pop(sheet, a),
+              ),
+            const SizedBox(height: 8),
+          ],
+        ),
+      ),
+    );
+    if (picked != null && context.mounted) {
+      await admin.formationFor(context, picked);
+    }
+  }
+
+  void _openAll(BuildContext context) {
+    Navigator.of(context).push<void>(
+      MaterialPageRoute<void>(
+        builder: (_) => Scaffold(
+          backgroundColor: teamixBackground,
+          appBar: AppBar(
+            leading: IconButton(
+              tooltip: '모임 홈으로 돌아가기',
+              onPressed: () => Navigator.of(context).pop(),
+              icon: const Icon(Icons.chevron_left, size: 28),
+            ),
+            centerTitle: true,
+            title: const Text(
+              '소모임 전체',
+              style: TextStyle(fontSize: 17, fontWeight: FontWeight.w700),
+            ),
+          ),
+          body: Align(
+            alignment: Alignment.topCenter,
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 520),
+              child: ListView(
+                padding: const EdgeInsets.fromLTRB(20, 8, 20, 24),
+                children: [
+                  _RealActivities(
+                    source: activitiesSource!,
+                    groupId: groupId!,
+                    groupName: groupName,
+                    palette: palette,
+                    themeColor: themeColor,
+                    isOperator: isOperator,
+                    activityBackend: activityBackend,
+                    formationBackend: formationBackend,
+                    showAll: true,
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
   void _createActivity(BuildContext context, ActivityBackend backend) {
     Navigator.of(context).push<void>(
       MaterialPageRoute<void>(
@@ -57,6 +158,9 @@ class GroupHome extends StatelessWidget {
 
   /// Issues a real invite code; null keeps the demo notice.
   final Future<String> Function()? onIssueInvite;
+
+  /// Turns an issued code off from the invite popup.
+  final Future<void> Function(String code)? onDeactivateInvite;
 
   /// Opens the real join request list; null keeps the demo notice.
   final VoidCallback? onOpenJoinRequests;
@@ -91,8 +195,14 @@ class GroupHome extends StatelessWidget {
           '다시 들어오려면 초대 코드가 필요해요.',
         ),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(d, false), child: const Text('취소')),
-          TextButton(onPressed: () => Navigator.pop(d, true), child: const Text('나가기')),
+          TextButton(
+            onPressed: () => Navigator.pop(d, false),
+            child: const Text('취소'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(d, true),
+            child: const Text('나가기'),
+          ),
         ],
       ),
     );
@@ -122,20 +232,25 @@ class GroupHome extends StatelessWidget {
           mainAxisSize: MainAxisSize.min,
           children: [
             const SizedBox(height: 12),
-            ListTile(
-              leading: const Icon(Icons.rate_review_outlined),
-              title: const Text('소모임 평가하기'),
-              onTap: () {
-                Navigator.pop(sheet);
-                if (activityBackend == null) {
-                  _preview(context, '소모임 선택 및 평가');
-                } else {
-                  ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-                    content: Text('활동이 끝난 소모임의 상세에서 후기를 남길 수 있어요.'),
-                  ));
-                }
-              },
-            ),
+            // Real feedback lives on each ended subgroup, so only the demo
+            // keeps this entry.
+            if (activityBackend == null)
+              ListTile(
+                leading: const Icon(Icons.rate_review_outlined),
+                title: const Text('소모임 평가하기'),
+                onTap: () {
+                  Navigator.pop(sheet);
+                  if (activityBackend == null) {
+                    _preview(context, '소모임 선택 및 평가');
+                  } else {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(
+                        content: Text('활동이 끝난 소모임의 상세에서 후기를 남길 수 있어요.'),
+                      ),
+                    );
+                  }
+                },
+              ),
             ListTile(
               leading: const Icon(Icons.logout),
               title: const Text('모임 나가기'),
@@ -277,8 +392,11 @@ class GroupHome extends StatelessWidget {
                         text: '초대 공유',
                         onTap: onIssueInvite == null
                             ? () => _preview(context, '초대 공유')
-                            : () =>
-                                  showInviteCodeDialog(context, onIssueInvite!),
+                            : () => showInviteCodeDialog(
+                                context,
+                                onIssueInvite!,
+                                deactivate: onDeactivateInvite,
+                              ),
                       ),
                     ),
                     const SizedBox(width: 8),
@@ -286,7 +404,8 @@ class GroupHome extends StatelessWidget {
                       child: _Action(
                         icon: Icons.list,
                         text: '부원 관리',
-                        onTap: onOpenMembers ?? () => _preview(context, '부원 관리'),
+                        onTap:
+                            onOpenMembers ?? () => _preview(context, '부원 관리'),
                       ),
                     ),
                     const SizedBox(width: 8),
@@ -305,7 +424,7 @@ class GroupHome extends StatelessWidget {
               if (isOperator)
                 FilledButton.icon(
                   onPressed: activitiesSource != null
-                      ? () => _preview(context, '팀 편성')
+                      ? () => _pickForFormation(context)
                       : () => Navigator.of(context).push<void>(
                           MaterialPageRoute<void>(
                             builder: (_) => const MatchingSettingsScreen(),
@@ -363,7 +482,9 @@ class GroupHome extends StatelessWidget {
                     ),
                   ),
                   TextButton(
-                    onPressed: () => _preview(context, '소모임 전체 목록'),
+                    onPressed: activitiesSource == null || groupId == null
+                        ? () => _preview(context, '소모임 전체 목록')
+                        : () => _openAll(context),
                     child: const Text(
                       '전체 보기 ›',
                       style: TextStyle(fontSize: 10, color: teamixMuted),
@@ -562,9 +683,13 @@ class _RealActivities extends StatefulWidget {
     this.themeColor,
     this.activityBackend,
     this.formationBackend,
+    this.showAll = false,
   });
   final ActivitiesSource source;
   final String groupId, groupName;
+
+  /// Lists ended subgroups whose feedback closed too (전체 보기).
+  final bool showAll;
   final String? themeColor;
   final GroupCardPalette palette;
   final bool isOperator;
@@ -604,14 +729,29 @@ class _RealActivitiesState extends State<_RealActivities> {
       // Ended activities stay only while feedback is open.
       final activities = [
         for (final a in snapshot.data ?? const <ActivityRecord>[])
-          if (a.status != 'ended' || a.feedbackOpen) a,
+          if (widget.showAll || a.status != 'ended' || a.feedbackOpen) a,
       ];
       final backend = widget.activityBackend;
-      if (backend != null) {
+      final admin = backend == null || !widget.isOperator
+          ? null
+          : ActivityAdmin(
+              source: widget.source,
+              backend: backend,
+              formation: widget.formationBackend,
+              groupId: widget.groupId,
+              palette: widget.palette,
+            );
+      if (backend != null && !widget.showAll) {
         for (final a in activities.where((a) => a.feedbackOpen)) {
           WidgetsBinding.instance.addPostFrameCallback((_) {
             if (!mounted) return;
-            maybePromptFeedback(context, backend, widget.groupId, a, widget.palette);
+            maybePromptFeedback(
+              context,
+              backend,
+              widget.groupId,
+              a,
+              widget.palette,
+            );
           });
         }
       }
@@ -640,22 +780,14 @@ class _RealActivitiesState extends State<_RealActivities> {
                     typeLabel: activity.typeLabel,
                     color: palette.background,
                     accent: palette.accent,
-                    onEdit: null,
-                    onDetail: () => Navigator.of(context).push<void>(
-                      MaterialPageRoute<void>(
-                        builder: (_) => RealSubgroupDetailScreen(
-                          source: widget.source,
-                          activityId: activity.id,
-                          groupId: widget.groupId,
-                          groupName: widget.groupName,
-                          themeColor: widget.themeColor,
-                          palette: widget.palette,
-                          isOperator: widget.isOperator,
-                          activityBackend: widget.activityBackend,
-                          formationBackend: widget.formationBackend,
-                        ),
-                      ),
-                    ),
+                    onEdit: admin == null
+                        ? null
+                        : () => admin.showMenu(
+                            context,
+                            activity,
+                            onOpenDetail: () => _openDetail(context, activity),
+                          ),
+                    onDetail: () => _openDetail(context, activity),
                   ),
                 );
               },
@@ -664,4 +796,21 @@ class _RealActivitiesState extends State<_RealActivities> {
       );
     },
   );
+
+  void _openDetail(BuildContext context, ActivityRecord activity) =>
+      Navigator.of(context).push<void>(
+        MaterialPageRoute<void>(
+          builder: (_) => RealSubgroupDetailScreen(
+            source: widget.source,
+            activityId: activity.id,
+            groupId: widget.groupId,
+            groupName: widget.groupName,
+            themeColor: widget.themeColor,
+            palette: widget.palette,
+            isOperator: widget.isOperator,
+            activityBackend: widget.activityBackend,
+            formationBackend: widget.formationBackend,
+          ),
+        ),
+      );
 }

@@ -7,9 +7,8 @@ import '../data/formation_backend.dart';
 import '../models/activity.dart';
 import '../theme.dart';
 import '../widgets/my_team_card.dart';
+import 'activity_admin.dart';
 import 'activity_feedback_flow.dart';
-import 'edit_activity_screen.dart';
-import 'formation_screen.dart';
 import 'group_card_palette.dart';
 import 'matching_settings_screen.dart';
 import 'registration_screen.dart';
@@ -31,6 +30,9 @@ class SubgroupDetailScreen extends StatelessWidget {
     this.feedbackAction,
     this.onCancelRegistration,
     this.onEditActivity,
+    this.onShowApplicants,
+    this.cancelBlockedReason,
+    this.showShareLink = true,
   });
 
   final String groupName;
@@ -62,8 +64,17 @@ class SubgroupDetailScreen extends StatelessWidget {
   /// cancelRegistration; null when it's no longer allowed (after publish).
   final VoidCallback? onCancelRegistration;
 
+  /// Why 신청 취소 is off for a submitted sign-up; shown on a disabled button.
+  final String? cancelBlockedReason;
+
+  /// 소모임 링크 공유 is still a placeholder, so real mode hides it.
+  final bool showShareLink;
+
   /// Opens the edit screen (operators, while recruiting); null otherwise.
   final VoidCallback? onEditActivity;
+
+  /// Opens the real sign-up list (operators); null keeps the notice.
+  final VoidCallback? onShowApplicants;
 
   Widget _applyButton(String label, VoidCallback? onPressed) => FilledButton(
     style: FilledButton.styleFrom(
@@ -84,8 +95,9 @@ class SubgroupDetailScreen extends StatelessWidget {
   /// subgroups keep the "준비 중" notice.
   void _menuAction(BuildContext context, String item) {
     if (activity == null) return _pending(context, item);
-    void tell(String text) => ScaffoldMessenger.of(context)
-        .showSnackBar(SnackBar(content: Text(text)));
+    void tell(String text) =>
+        ScaffoldMessenger.of(context)
+            .showSnackBar(SnackBar(content: Text(text)));
     switch (item) {
       case '소모임 정보 수정':
         onEditActivity == null
@@ -105,7 +117,7 @@ class SubgroupDetailScreen extends StatelessWidget {
   void _more(BuildContext context) {
     final items = isOperator
         ? const ['소모임 정보 수정', '모집 마감하기', '활동 종료하기']
-        : const ['소모임 링크 공유'];
+        : [if (showShareLink) '소모임 링크 공유'];
     showModalBottomSheet<void>(
       context: context,
       backgroundColor: teamixBackground,
@@ -220,18 +232,19 @@ class SubgroupDetailScreen extends StatelessWidget {
           ),
         ),
         actions: [
-          Padding(
-            padding: const EdgeInsets.only(right: 20),
-            child: Material(
-              color: teamixAccountBackground,
-              shape: const CircleBorder(),
-              child: IconButton(
-                tooltip: '소모임 메뉴',
-                onPressed: () => _more(context),
-                icon: const Icon(Icons.more_horiz, color: teamixPrimary),
+          if (isOperator || showShareLink)
+            Padding(
+              padding: const EdgeInsets.only(right: 20),
+              child: Material(
+                color: teamixAccountBackground,
+                shape: const CircleBorder(),
+                child: IconButton(
+                  tooltip: '소모임 메뉴',
+                  onPressed: () => _more(context),
+                  icon: const Icon(Icons.more_horiz, color: teamixPrimary),
+                ),
               ),
             ),
-          ),
         ],
       ),
       body: Align(
@@ -367,19 +380,22 @@ class SubgroupDetailScreen extends StatelessWidget {
                           runSpacing: 8,
                           children: [
                             OutlinedButton(
-                              onPressed: () => _pending(context, '신청 현황'),
+                              onPressed:
+                                  onShowApplicants ??
+                                  () => _pending(context, '신청 현황'),
                               child: Text('신청 현황 · $participantCount명'),
                             ),
                             OutlinedButton(
-                              onPressed: onManageFormation ??
+                              onPressed:
+                                  onManageFormation ??
                                   (activity != null
-                                  ? () => _pending(context, '팀 편성 관리')
-                                  : () => Navigator.of(context).push<void>(
-                                      MaterialPageRoute<void>(
-                                        builder: (_) =>
-                                            const MatchingSettingsScreen(),
-                                      ),
-                                    )),
+                                      ? () => _pending(context, '팀 편성 관리')
+                                      : () => Navigator.of(context).push<void>(
+                                          MaterialPageRoute<void>(
+                                            builder: (_) =>
+                                                const MatchingSettingsScreen(),
+                                          ),
+                                        )),
                               child: const Text('팀 편성 관리 →'),
                             ),
                           ],
@@ -421,7 +437,9 @@ class SubgroupDetailScreen extends StatelessWidget {
                               : '참가 신청하기',
                           onApply == null ? null : () => onApply!(current),
                         );
-                        if (!submitted || onCancelRegistration == null) {
+                        if (!submitted ||
+                            (onCancelRegistration == null &&
+                                cancelBlockedReason == null)) {
                           return apply;
                         }
                         return Column(
@@ -436,6 +454,15 @@ class SubgroupDetailScreen extends StatelessWidget {
                               ),
                               child: const Text('신청 취소'),
                             ),
+                            if (onCancelRegistration == null)
+                              Text(
+                                cancelBlockedReason!,
+                                textAlign: TextAlign.center,
+                                style: const TextStyle(
+                                  fontSize: 12,
+                                  color: teamixMuted,
+                                ),
+                              ),
                           ],
                         );
                       },
@@ -511,26 +538,35 @@ class _RealSubgroupDetailScreenState extends State<RealSubgroupDetailScreen> {
       questions = await backend.questions(activity.id);
     } catch (_) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('설문을 불러오지 못했어요.')),
-        );
+        ScaffoldMessenger.of(context)
+            .showSnackBar(const SnackBar(content: Text('설문을 불러오지 못했어요.')));
       }
       return;
     }
     if (!mounted) return;
     final editing = current?.submitted ?? false;
-    Navigator.of(context).push<void>(MaterialPageRoute<void>(
-      builder: (_) => RegistrationScreen(
-        activity: activity,
-        questions: questions,
-        palette: widget.palette,
-        initialAnswers: editing ? current!.answers : const {},
-        onSubmit: (answers) => editing
-            ? backend.updateRegistration(activity.id, answers)
-            : backend.submitRegistration(activity.id, answers),
+    Navigator.of(context).push<void>(
+      MaterialPageRoute<void>(
+        builder: (_) => RegistrationScreen(
+          activity: activity,
+          questions: questions,
+          palette: widget.palette,
+          initialAnswers: editing ? current!.answers : const {},
+          onSubmit: (answers) => editing
+              ? backend.updateRegistration(activity.id, answers)
+              : backend.submitRegistration(activity.id, answers),
+        ),
       ),
-    ));
+    );
   }
+
+  ActivityAdmin _admin(ActivityBackend backend) => ActivityAdmin(
+    source: widget.source,
+    backend: backend,
+    formation: widget.formationBackend,
+    groupId: widget.groupId,
+    palette: widget.palette,
+  );
 
   Future<void> _cancel(ActivityBackend backend, ActivityRecord activity) async {
     final ok = await showDialog<bool>(
@@ -539,8 +575,14 @@ class _RealSubgroupDetailScreenState extends State<RealSubgroupDetailScreen> {
         title: const Text('신청을 취소할까요?'),
         content: const Text('취소하면 이 소모임 팀 편성에서 빠져요. 모집 중이면 다시 신청할 수 있어요.'),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(d, false), child: const Text('아니요')),
-          TextButton(onPressed: () => Navigator.pop(d, true), child: const Text('신청 취소')),
+          TextButton(
+            onPressed: () => Navigator.pop(d, false),
+            child: const Text('아니요'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(d, true),
+            child: const Text('신청 취소'),
+          ),
         ],
       ),
     );
@@ -554,40 +596,6 @@ class _RealSubgroupDetailScreenState extends State<RealSubgroupDetailScreen> {
         const SnackBar(content: Text('취소하지 못했어요. 팀이 이미 공개됐을 수 있어요.')),
       );
     }
-  }
-
-  void _edit(ActivityBackend backend, ActivityRecord activity) {
-    Navigator.of(context).push<void>(MaterialPageRoute<void>(
-      builder: (_) => EditActivityScreen(
-        activity: activity,
-        palette: widget.palette,
-        onSave: (patch) => backend.updateActivity(activity.id, patch),
-      ),
-    ));
-  }
-
-  Future<void> _manageFormation(ActivityBackend backend) async {
-    final formation = widget.formationBackend;
-    if (formation == null) {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-        content: Text('편성 서버 주소가 설정되지 않았어요. FORMATION_URL로 실행해 주세요.'),
-      ));
-      return;
-    }
-    // Labels only; the screen still works with raw option IDs.
-    final questions = await backend
-        .questions(widget.activityId)
-        .catchError((_) => const <ActivityQuestion>[]);
-    if (!mounted) return;
-    Navigator.of(context).push<void>(MaterialPageRoute<void>(
-      builder: (_) => FormationScreen(
-        groupId: widget.groupId,
-        activity: widget.source.watchActivity(widget.activityId),
-        backend: formation,
-        questions: questions,
-        palette: widget.palette,
-      ),
-    ));
   }
 
   @override
@@ -635,7 +643,7 @@ class _RealSubgroupDetailScreenState extends State<RealSubgroupDetailScreen> {
             : (registered) => _apply(backend, current, registered),
         onManageFormation: backend == null || !widget.isOperator
             ? null
-            : () => _manageFormation(backend),
+            : () => _admin(backend).formationFor(context, current),
         lifecycle: backend == null || !widget.isOperator
             ? null
             : ActivityLifecyclePanel(
@@ -654,13 +662,22 @@ class _RealSubgroupDetailScreenState extends State<RealSubgroupDetailScreen> {
         onEditActivity:
             backend == null || !widget.isOperator || !current.recruiting
             ? null
-            : () => _edit(backend, current),
+            : () => _admin(backend).edit(context, current),
+        onShowApplicants: backend == null || !widget.isOperator
+            ? null
+            : () => _admin(backend).applicants(context, current),
         onCancelRegistration:
             backend == null ||
                 current.published ||
                 !(current.recruiting || current.status == 'closed')
             ? null
             : () => _cancel(backend, current),
+        cancelBlockedReason: current.published
+            ? '팀이 공개돼 취소할 수 없어요.'
+            : current.recruiting || current.status == 'closed'
+            ? null
+            : '활동이 시작돼 취소할 수 없어요.',
+        showShareLink: false,
         myTeam: backend == null
             ? null
             : MyTeamCard(

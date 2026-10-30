@@ -8,11 +8,13 @@ String inviteLink(String code) => Uri.base
     .replace(path: '/', queryParameters: {'invite': code}, fragment: '')
     .toString();
 
-/// Issues a code through [issue] and shows it with copy buttons.
+/// Issues a code through [issue] and shows it with copy buttons, plus
+/// 이 코드 끄기 when [deactivate] is given.
 Future<void> showInviteCodeDialog(
   BuildContext context,
-  Future<String> Function() issue,
-) async {
+  Future<String> Function() issue, {
+  Future<void> Function(String code)? deactivate,
+}) async {
   final messenger = ScaffoldMessenger.of(context);
   final String code;
   try {
@@ -31,6 +33,28 @@ Future<void> showInviteCodeDialog(
       title: const Text('초대 코드'),
       content: InviteCodeCard(code: code),
       actions: [
+        if (deactivate != null)
+          TextButton(
+            onPressed: () async {
+              Navigator.pop(dialog);
+              try {
+                await deactivate(code);
+                messenger.showSnackBar(
+                  const SnackBar(
+                    content: Text('이 초대 코드를 껐어요. 더는 참여 요청에 쓸 수 없어요.'),
+                  ),
+                );
+              } catch (_) {
+                messenger.showSnackBar(
+                  const SnackBar(content: Text('초대 코드를 끄지 못했어요.')),
+                );
+              }
+            },
+            child: const Text(
+              '이 코드 끄기',
+              style: TextStyle(color: teamixAddForeground),
+            ),
+          ),
         TextButton(
           onPressed: () => Navigator.pop(dialog),
           child: const Text('닫기'),
