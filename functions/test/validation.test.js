@@ -47,10 +47,6 @@ test('answer values checked against type and options',()=>{
   assert.throws(()=>V.answers({...answers(),time:['wed','wed']},docs()));
   assert.throws(()=>V.answers({...answers(),time:[]},docs()));
 });
-test('invite code normalized and checked',()=>{
-  assert.equal(V.inviteCode(' abcdefghjk '),'ABCDEFGHJK');
-  for(const bad of ['ABC','ABCDEFGHJI','ABCDEFGHJ0',42])assert.throws(()=>V.inviteCode(bad));
-});
 test('IDs: path traversal rejected, underscores rejected where IDs are joined',()=>{
   assert.throws(()=>V.id('../x'));assert.throws(()=>V.noUnderscore('a_b'));assert.equal(V.noUnderscore('abc1'),'abc1');
 });

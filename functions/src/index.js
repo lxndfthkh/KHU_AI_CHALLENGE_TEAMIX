@@ -29,8 +29,8 @@ const callable=fn=>onCall({region},async req=>{
   }
 });
 
-for(const name of ['createGroup','issueInvitation','previewInvitation','requestJoin','approveJoin','rejectJoin',
-  'createActivity','submitRegistration','updateRegistration','cancelRegistration',
+// createGroup, invitations, requestJoin and approve/reject run in the app under firestore.rules (main).
+for(const name of ['createActivity','submitRegistration','updateRegistration','cancelRegistration',
   'setPlacementPreference','revokePlacementPreference'])exports[name]=callable(C[name]);
 for(const name of ['setLearningConsent','startActivity','endActivity','submitFeedback','closeFeedback'])exports[name]=callable(A[name]);
 // Service admin only (custom claim admin: true), checked inside each command.

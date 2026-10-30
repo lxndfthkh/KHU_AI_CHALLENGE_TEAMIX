@@ -47,7 +47,6 @@ beforeEach(async()=>{
   await put('placementPreferences/g_u0_u1',{groupId:'g',userId:'u0',targetUserId:'u1',active:true});
   await put('placementPreferences/g_u2_u0',{groupId:'g',userId:'u2',targetUserId:'u0',active:true});
   await put('consents/u0',{learning:{agreed:true}});
-  await put('rateLimits/u0_invite',{count:1,windowStart:t});
   await put('trainingDatasets/fx1',{extractorVersion:'fx1'});
   await A.endActivity(db,'admin',{activityId:'a'});
   for(const u of ['u0','u1','u2'])await A.submitFeedback(db,u,{activityId:'a',scores:scores(u==='u0'?1:5)});
@@ -88,7 +87,7 @@ test('9: account deletion removes personal data, keeps team records as deleted-u
   assert.deepEqual(await P.deleteAccount(db,'u0',{confirm:true},{deleteAuthUser:async u=>calls.push(u)}),{deleted:true,activities:2});
   assert.deepEqual(calls,['u0']);
   for(const p of ['users/u0','consents/u0','memberships/g_u0','registrations/a_u0','registrations/b_u0','feedback/a_u0',
-    'placementPreferences/g_u0_u1','placementPreferences/g_u2_u0','notifications/x_u0','teamViews/a_u0','rateLimits/u0_invite'])
+    'placementPreferences/g_u0_u1','placementPreferences/g_u2_u0','notifications/x_u0','teamViews/a_u0'])
     assert.equal(await get(p),null,p);
   const pub=await get('publications/a_v1');
   assert.deepEqual(pub.teams[0].members.map(m=>m.uid),['deleted-user','u1','u2']);

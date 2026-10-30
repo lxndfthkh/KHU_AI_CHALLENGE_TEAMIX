@@ -1,25 +1,33 @@
-// Stage 1-2 commands against the Firestore emulator (main schema). Run from functions/:
-//   npx firebase emulators:exec --only firestore --project demo-teamix-fn "node --test test/commands.emulator.test.js"
-const {test,before,beforeEach}=require('node:test');
+// Stage 1-2 server commands against the Firestore emulator (main schema). Run from functions/: npm run test:emulator
+// Groups, invitations, join requests and approvals are made the way main's app makes them: client writes
+// under the real firestore.rules (lib/data/firestore_group_writer.dart, firestore_invitations.dart,
+// firestore_join_requests.dart). The server commands under test must work on that data.
+const {test,before,beforeEach,after}=require('node:test');
 const assert=require('node:assert/strict');
 const path=require('node:path');
-const {existsSync}=require('node:fs');
+const {existsSync,readFileSync}=require('node:fs');
 const {spawnSync}=require('node:child_process');
 const {initializeApp}=require('firebase-admin/app');
 const {getFirestore,Timestamp}=require('firebase-admin/firestore');
+const {initializeTestEnvironment,assertFails}=require('@firebase/rules-unit-testing');
+const F=require('firebase/firestore');
 const C=require('../src/commands');
 const A=require('../src/activity');
 
 const PROJECT=process.env.GCLOUD_PROJECT||'';
-let db;
-before(()=>{
+let db,env;
+before(async()=>{
   assert.ok(process.env.FIRESTORE_EMULATOR_HOST&&PROJECT.startsWith('demo-'),'Firestore 에뮬레이터(demo- 프로젝트)에서 실행하세요');
   initializeApp({projectId:PROJECT});db=getFirestore();
+  env=await initializeTestEnvironment({projectId:PROJECT,firestore:{rules:readFileSync(path.join(__dirname,'../../firestore.rules'),'utf8')}});
 });
+after(async()=>{if(env)await env.cleanup();});
+const app=uid=>env.authenticatedContext(uid).firestore();
 beforeEach(async()=>{
   await fetch(`http://${process.env.FIRESTORE_EMULATOR_HOST}/emulator/v1/projects/${PROJECT}/databases/(default)/documents`,{method:'DELETE'});
+  // Profile on sign-in (main: lib/data/user_profile.dart), written by the app under the rules.
   for(const uid of ['admin','u0','u1','u2','u3','u4','outsider'])
-    await db.doc(`users/${uid}`).set({displayName:`N-${uid}`,createdAt:Timestamp.now(),updatedAt:Timestamp.now()});
+    await F.setDoc(F.doc(app(uid),`users/${uid}`),{displayName:`N-${uid}`,createdAt:F.serverTimestamp(),updatedAt:F.serverTimestamp()});
 });
 const get=async p=>{const s=await db.doc(p).get();return s.exists?s.data():null;};
 const rejects=(promise,code)=>assert.rejects(promise,e=>e instanceof C.CommandError?e.code===code:code==='invalid-argument'&&e.name==='Error');
@@ -33,68 +41,47 @@ const activityInput=(groupId,patch={})=>({groupId,title:'해커톤',capacity:10,
   questions:QUESTIONS,matching:{method:'balanced',questionCriteria:{role:'role',time:'time',exp:'experience'}},...patch});
 const ANSWERS=i=>({role:i%2?'dev':'design',time:['wed'],exp:1+i%5});
 
+// --- main's client flows, verbatim in shape ---
+async function clientCreateGroup(uid,name='메이커스',description='시연'){
+  const store=app(uid),ref=F.doc(F.collection(store,'groups')),batch=F.writeBatch(store);
+  batch.set(ref,{name,description,categories:[],ownerId:uid,themeColor:'mint',status:'active',createdAt:F.serverTimestamp(),updatedAt:F.serverTimestamp()});
+  batch.set(F.doc(store,`memberships/${ref.id}_${uid}`),{groupId:ref.id,userId:uid,displayName:`N-${uid}`,role:'admin',status:'approved',
+    createdAt:F.serverTimestamp(),updatedAt:F.serverTimestamp()});
+  await batch.commit();
+  return ref.id;
+}
+async function clientIssueInvitation(uid,groupId,code='ABCD2345'){
+  const g=(await F.getDoc(F.doc(app(uid),`groups/${groupId}`))).data();
+  await F.setDoc(F.doc(app(uid),`invitations/${code}`),{groupId,groupName:g.name,description:g.description,active:true,
+    expiresAt:F.Timestamp.fromMillis(Date.now()+7*86400000-5*60000),createdBy:uid,createdAt:F.serverTimestamp()});
+  return code;
+}
+async function clientRequestJoin(uid,groupId,code){
+  await F.setDoc(F.doc(app(uid),`memberships/${groupId}_${uid}`),{groupId,userId:uid,displayName:`N-${uid}`,role:'member',status:'pending',
+    invitationId:code,createdAt:F.serverTimestamp(),updatedAt:F.serverTimestamp()});
+}
+async function clientDecide(adminUid,groupId,uid,status){
+  await F.updateDoc(F.doc(app(adminUid),`memberships/${groupId}_${uid}`),{status,updatedAt:F.serverTimestamp()});
+}
 async function groupWithMembers(n=4){
-  const {groupId}=await C.createGroup(db,'admin',{name:'메이커스',description:'시연'});
-  const {code}=await C.issueInvitation(db,'admin',{groupId});
-  for(let i=0;i<n;i++){await C.requestJoin(db,`u${i}`,{code});await C.approveJoin(db,'admin',{groupId,userId:`u${i}`});}
+  const groupId=await clientCreateGroup('admin');
+  const code=await clientIssueInvitation('admin',groupId);
+  for(let i=0;i<n;i++){await clientRequestJoin(`u${i}`,groupId,code);await clientDecide('admin',groupId,`u${i}`,'approved');}
   return {groupId,code};
 }
 
-test('createGroup: profile required; group + approved admin membership in main layout',async()=>{
-  await rejects(C.createGroup(db,'nobody',{name:'x'}),'failed-precondition');
-  const {groupId}=await C.createGroup(db,'admin',{name:'메이커스',themeColor:'peach'});
-  const g=await get(`groups/${groupId}`);
-  assert.equal(g.ownerId,'admin');assert.equal(g.themeColor,'peach');assert.equal(g.status,'active');
-  const m=await get(`memberships/${groupId}_admin`);
-  assert.deepEqual([m.groupId,m.userId,m.role,m.status,m.displayName],[groupId,'admin','admin','approved','N-admin']);
-});
-
-test('issueInvitation: admin only; only the hash is stored',async()=>{
-  const {groupId}=await C.createGroup(db,'admin',{name:'g'});
-  await rejects(C.issueInvitation(db,'u0',{groupId}),'permission-denied');
-  const {code,expiresAt}=await C.issueInvitation(db,'admin',{groupId});
-  assert.match(code,/^[A-HJ-NP-Z2-9]{10}$/);assert.ok(expiresAt>Date.now());
-  const inv=await get(`invitations/${C.hash(code)}`);
-  assert.equal(inv.groupId,groupId);assert.equal(inv.active,true);
-  assert.ok(!JSON.stringify(inv).includes(code));
-});
-
-test('previewInvitation: safe fields; expired/inactive/wrong codes rejected; guesses are rate limited',async()=>{
-  const {groupId,code}=await groupWithMembers(2);
-  const p=await C.previewInvitation(db,'outsider',{code:code.toLowerCase()});
-  assert.deepEqual(Object.keys(p).sort(),['description','groupId','memberCount','myStatus','name','themeColor']);
-  assert.equal(p.memberCount,3);assert.equal(p.myStatus,null);
-  await db.doc(`invitations/${C.hash(code)}`).update({expiresAt:Timestamp.fromMillis(Date.now()-1)});
-  await rejects(C.previewInvitation(db,'outsider',{code}),'not-found');
-  const {code:c2}=await C.issueInvitation(db,'admin',{groupId});
-  await db.doc(`invitations/${C.hash(c2)}`).update({active:false});
-  await rejects(C.previewInvitation(db,'outsider',{code:c2}),'not-found');
-  for(let i=0;i<17;i++)await rejects(C.previewInvitation(db,'outsider',{code:'ZZZZZZZZZZ'}),'not-found');
-  await rejects(C.previewInvitation(db,'outsider',{code:'ZZZZZZZZZZ'}),'resource-exhausted');
-});
-
-test('previewInvitation by groupId only for people who already asked to join',async()=>{
-  const {groupId,code}=await groupWithMembers(0);
-  await rejects(C.previewInvitation(db,'outsider',{groupId}),'permission-denied');
-  await C.requestJoin(db,'outsider',{code});
-  assert.equal((await C.previewInvitation(db,'outsider',{groupId})).myStatus,'pending');
-});
-
-test('requestJoin → approveJoin / rejectJoin: idempotent, notifications in main shape',async()=>{
-  const {groupId,code}=await groupWithMembers(0);
-  assert.equal((await C.requestJoin(db,'u0',{code})).status,'pending');
-  assert.equal((await C.requestJoin(db,'u0',{code})).status,'pending');
-  await rejects(C.approveJoin(db,'u1',{groupId,userId:'u0'}),'permission-denied');
-  assert.equal((await C.approveJoin(db,'admin',{groupId,userId:'u0'})).status,'approved');
-  assert.equal((await C.approveJoin(db,'admin',{groupId,userId:'u0'})).status,'approved');
-  const notes=(await db.collection('notifications').where('userId','==','u0').get()).docs.map(d=>d.data());
-  assert.equal(notes.length,1);assert.equal(notes[0].type,'joinApproved');assert.equal(notes[0].readAt,null);
-  assert.equal((await C.requestJoin(db,'u0',{code})).status,'approved');
-  await C.requestJoin(db,'u1',{code});
-  assert.equal((await C.rejectJoin(db,'admin',{groupId,userId:'u1'})).status,'rejected');
-  assert.equal((await get(`memberships/${groupId}_u1`)).status,'rejected');
-  assert.equal((await C.requestJoin(db,'u1',{code})).status,'pending');
-  await rejects(C.approveJoin(db,'admin',{groupId,userId:'u4'}),'failed-precondition');
+test('main client flow is accepted by the rules and gives the membership shape the server reads',async()=>{
+  const {groupId,code}=await groupWithMembers(1);
+  const m=await get(`memberships/${groupId}_u0`);
+  assert.deepEqual([m.groupId,m.userId,m.role,m.status,m.invitationId],[groupId,'u0','member','approved',code]);
+  assert.equal((await get(`memberships/${groupId}_admin`)).role,'admin');
+  await clientRequestJoin('u1',groupId,code);
+  await clientDecide('admin',groupId,'u1','rejected');
+  // main policy: an existing membership (here rejected) cannot be overwritten by a new request
+  await assertFails(clientRequestJoin('u1',groupId,code));
+  // only admins decide; a member cannot approve someone else
+  await clientRequestJoin('u2',groupId,code);
+  await assertFails(clientDecide('u0',groupId,'u2','approved'));
 });
 
 test('createActivity: admin only; activity, questions and settings/matching contract for stage 3',async()=>{
@@ -115,7 +102,7 @@ test('createActivity: admin only; activity, questions and settings/matching cont
 test('registrations: approved members only, answers checked, count once, capacity and deadline enforced',async()=>{
   const {groupId,code}=await groupWithMembers(3);
   const {activityId}=await C.createActivity(db,'admin',activityInput(groupId,{capacity:2}));
-  await C.requestJoin(db,'u4',{code});
+  await clientRequestJoin('u4',groupId,code);
   await rejects(C.submitRegistration(db,'u4',{activityId,answers:ANSWERS(4)}),'permission-denied');
   await rejects(C.submitRegistration(db,'u0',{activityId,answers:{role:'pm'}}),'invalid-argument');
   await C.submitRegistration(db,'u0',{activityId,answers:ANSWERS(0)});
@@ -156,7 +143,7 @@ test('placement preferences: same-group members only, at most two active, never 
 });
 
 const PYTHON=path.join(__dirname,'../../algorithm/.venv/bin/python');
-test('end to end: stage 1-2 data is closed, formed and published by stage 3, then started, ended and reviewed (stage 4)',{skip:!existsSync(PYTHON)&&'algorithm/.venv 없음'},async()=>{
+test('end to end: main client group + stage 1-2 server data is closed, formed and published by stage 3, then started, ended and reviewed (stage 4)',{skip:!existsSync(PYTHON)&&'algorithm/.venv 없음'},async()=>{
   const {groupId}=await groupWithMembers(4);
   const {activityId}=await C.createActivity(db,'admin',activityInput(groupId));
   for(let i=0;i<4;i++)await C.submitRegistration(db,`u${i}`,{activityId,answers:ANSWERS(i)});

@@ -237,14 +237,6 @@
     },
     "notes": "Owner read only; written by setLearningConsent. Kept out of users/{uid} because its rules allow only displayName/createdAt/updatedAt."
   },
-  "rateLimits": {
-    "path": "rateLimits/{uid}_{kind}",
-    "fields": {
-      "windowStart": "epoch ms",
-      "count": "integer"
-    },
-    "notes": "Server-only (default deny). Invitation code checks: 20 per 10 minutes per user."
-  },
   "trainingDatasets": {
     "path": "trainingDatasets/fx1, trainingDatasets/fx1/rows/{activityId}_v{n}_{teamId}, trainingDatasets/fx1/activities/{activityId}",
     "fields": {

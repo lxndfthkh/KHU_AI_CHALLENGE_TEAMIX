@@ -81,10 +81,5 @@ function answers(input,questions){
   return out;
 }
 
-// Invitation codes: shown to people and embedded in links. Stored only as SHA-256.
-const CODE_ALPHABET='ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
-function inviteCode(v){check(typeof v==='string','Invalid invite code');const c=v.trim().toUpperCase();
-  check(/^[A-HJ-NP-Z2-9]{10}$/.test(c),'Invalid invite code');return c;}
-
 const MAX_PREFERENCES=2;
-module.exports={ValidationError,check,plain,text,optionalText,id,noUnderscore,color,activity,matching,answers,inviteCode,CODE_ALPHABET,MAX_PREFERENCES,CRITERIA};
+module.exports={ValidationError,check,plain,text,optionalText,id,noUnderscore,color,activity,matching,answers,MAX_PREFERENCES,CRITERIA};

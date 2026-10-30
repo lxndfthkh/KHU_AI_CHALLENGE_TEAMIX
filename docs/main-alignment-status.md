@@ -6,7 +6,7 @@ main 061b0ec(dca8e20 규칙 복구 포함)를 병합했다. 저장 구조는 mai
 
 | 범위 | 위치 | 문서 |
 |---|---|---|
-| 1~2단계 서버 명령 | `functions/src/commands.js` | `docs/feedback-learning-stages-1-2.md` |
+| 1~2단계 서버 명령 (소모임·신청·선호) | `functions/src/commands.js` | `docs/feedback-learning-stages-1-2.md` |
 | 3단계 편성 API | `algorithm/server_v3.py`, `repository.py` | `docs/feedback-learning-stage3-boundary-status.md` |
 | Flutter 호출 계층 | `lib/data/feedback_learning_api.dart`, `lib/services/formation_api.dart` | 화면 연결 전 |
 

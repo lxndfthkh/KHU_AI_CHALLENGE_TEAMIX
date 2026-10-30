@@ -116,7 +116,6 @@ async function deleteAccount(db,uid,d,deps){
   }
   for(const s of [...memberships.docs,...regs.docs,...feedback.docs,...authored.docs,...targeted.docs,...notes.docs,...views.docs])ops.push(['delete',s.ref]);
   for(const p of ['consents','users'])ops.push(['delete',db.doc(`${p}/${uid}`)]);
-  ops.push(['delete',db.doc(`rateLimits/${uid}_invite`)]);
   if(feedback.size)ops.push(['merge',db.doc(DATASET),{dirty:true,dirtyAt:now()}]);
   await commit(db,ops);
   await deps.deleteAuthUser(uid);

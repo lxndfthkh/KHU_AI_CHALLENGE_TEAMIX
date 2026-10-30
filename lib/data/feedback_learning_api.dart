@@ -44,20 +44,9 @@ class FeedbackLearningApi {
     }
     return Map<String, dynamic>.from(result);
   }
-  // Stage 1-2 commands (functions/src/commands.js); names match docs/FIRESTORE.md.
-  // The profile (users/{uid}: displayName, createdAt, updatedAt) is written directly; rules allow it.
-  Future<Map<String, dynamic>> createGroup(String name, {String description = '', String? themeColor}) =>
-    call('createGroup', {'name': name, 'description': description, 'themeColor': ?themeColor});
-  Future<Map<String, dynamic>> issueInvitation(String groupId, {int? expiresInDays}) =>
-    call('issueInvitation', {'groupId': groupId, 'expiresInDays': ?expiresInDays});
-  /// Pass the code from a link or typed by hand; or a groupId you already asked to join.
-  Future<Map<String, dynamic>> previewInvitation({String? code, String? groupId}) =>
-    call('previewInvitation', {'code': ?code, 'groupId': ?groupId});
-  Future<Map<String, dynamic>> requestJoin(String code) => call('requestJoin', {'code': code});
-  Future<Map<String, dynamic>> approveJoin(String groupId, String userId) =>
-    call('approveJoin', {'groupId': groupId, 'userId': userId});
-  Future<Map<String, dynamic>> rejectJoin(String groupId, String userId) =>
-    call('rejectJoin', {'groupId': groupId, 'userId': userId});
+  // Stage 1-2 server commands (functions/src/commands.js). Group creation, invitations, join requests
+  // and approvals are app writes in main (firestore_group_writer.dart, firestore_invitations.dart,
+  // firestore_join_requests.dart), so they are not here.
   /// activity: title, description, capacity, targetTeamSize, deadlineAt (ms), themeColor?,
   /// questions [{id, label, type: single|multiple|scale, options [{id, label}], required?, enabled?}],
   /// matching {method, questionCriteria {questionId: role|time|experience|interest}, priority?, requireCommonTime?}.
