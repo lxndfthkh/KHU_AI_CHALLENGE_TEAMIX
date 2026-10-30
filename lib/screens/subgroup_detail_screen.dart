@@ -3,6 +3,8 @@ import 'package:flutter/material.dart';
 import '../data/demo_group_repository.dart';
 import '../data/firestore_activities_source.dart';
 import '../theme.dart';
+import '../data/activity_registration.dart';
+import 'registration_action.dart';
 import 'group_card_palette.dart';
 import 'matching_settings_screen.dart';
 
@@ -13,6 +15,7 @@ class SubgroupDetailScreen extends StatelessWidget {
     required this.groupName,
     this.subgroup,
     this.activity,
+    this.registrationFactory,
     required this.isOperator,
     this.palette = GroupCardPalette.defaultJoined,
   });
@@ -20,6 +23,7 @@ class SubgroupDetailScreen extends StatelessWidget {
   final String groupName;
   final DemoSubgroup? subgroup;
   final ActivityRecord? activity;
+  final ActivityRegistrationApi Function()? registrationFactory;
   final bool isOperator;
 
   /// The parent group's color from the groups home.
@@ -329,7 +333,9 @@ class SubgroupDetailScreen extends StatelessWidget {
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  FilledButton(
+                  if (activity != null && registrationFactory != null)
+                    RegistrationAction(factory: registrationFactory!, activity: activity!)
+                  else FilledButton(
                     style: FilledButton.styleFrom(
                       backgroundColor: teamixAddBackground,
                       foregroundColor: teamixAddForeground,
@@ -363,6 +369,7 @@ class RealSubgroupDetailScreen extends StatefulWidget {
   const RealSubgroupDetailScreen({
     super.key,
     required this.source,
+    this.registrationFactory,
     required this.activityId,
     required this.groupId,
     required this.groupName,
@@ -371,6 +378,7 @@ class RealSubgroupDetailScreen extends StatefulWidget {
     this.themeColor,
   });
   final ActivitiesSource source;
+  final ActivityRegistrationApi Function()? registrationFactory;
   final String activityId, groupId, groupName;
   final String? themeColor;
   final bool isOperator;
@@ -402,7 +410,9 @@ class _RealSubgroupDetailScreenState extends State<RealSubgroupDetailScreen> {
     stream: stream,
     builder: (context, snapshot) {
       String? message;
-      if (snapshot.hasError) message = '소모임을 불러오지 못했어요. 잠시 후 다시 열어 주세요.';
+      if (snapshot.hasError) {
+        message = '소모임을 불러오지 못했어요. 잠시 후 다시 열어 주세요.';
+      }
       if (snapshot.connectionState == ConnectionState.waiting &&
           !snapshot.hasError) {
         return Scaffold(
@@ -424,6 +434,7 @@ class _RealSubgroupDetailScreenState extends State<RealSubgroupDetailScreen> {
       return SubgroupDetailScreen(
         groupName: widget.groupName,
         activity: activity,
+        registrationFactory: widget.registrationFactory,
         isOperator: widget.isOperator,
         palette: GroupCardPalette.fromTheme(
           activity!.themeColor,

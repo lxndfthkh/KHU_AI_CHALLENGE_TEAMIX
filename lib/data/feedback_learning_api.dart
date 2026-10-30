@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'functions_config.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/foundation.dart';
@@ -11,8 +12,7 @@ class FeedbackLearningApi {
       : _auth = auth ?? FirebaseAuth.instance,
         _db = firestore ?? FirebaseFirestore.instance,
         _client = client ?? http.Client(), _ownsClient = client == null,
-        _base = functionsBase ?? Uri.parse(
-          'https://asia-northeast3-${(auth ?? FirebaseAuth.instance).app.options.projectId}.cloudfunctions.net/');
+        _base = functionsBase ?? FunctionsConfig.base((auth ?? FirebaseAuth.instance).app.options.projectId);
   final FirebaseAuth _auth;
   final FirebaseFirestore _db;
   final http.Client _client;
@@ -22,7 +22,9 @@ class FeedbackLearningApi {
   Future<void> signOut() => _auth.signOut();
   Future<Map<String, dynamic>> call(String name, Map<String, dynamic> data) async {
     final user = _auth.currentUser;
-    if (user == null) throw StateError('로그인이 필요해요');
+    if (user == null) {
+      throw StateError('로그인이 필요해요');
+    }
     final token = await user.getIdToken();
     final response = await _client.post(_base.resolve(name),
       headers: {'Content-Type': 'application/json', 'Authorization': 'Bearer $token'},
@@ -69,7 +71,9 @@ class FeedbackLearningApi {
   Future<Map<String, dynamic>> setLearningConsent(bool agreed) => call('setLearningConsent', {'agreed': agreed});
   Stream<DocumentSnapshot<Map<String, dynamic>>> ownConsent() {
     final uid = _auth.currentUser?.uid;
-    if (uid == null) throw StateError('로그인이 필요해요');
+    if (uid == null) {
+      throw StateError('로그인이 필요해요');
+    }
     return _db.collection('consents').doc(uid).snapshots();
   }
   Future<Map<String, dynamic>> startActivity(String activityId) => call('startActivity', {'activityId': activityId});
@@ -88,11 +92,13 @@ class FeedbackLearningApi {
   /// Own preferences only; firestore.rules allow the author to read them.
   Stream<QuerySnapshot<Map<String, dynamic>>> ownPreferences(String groupId) {
     final uid = _auth.currentUser?.uid;
-    if (uid == null) throw StateError('로그인이 필요해요');
+    if (uid == null) {
+      throw StateError('로그인이 필요해요');
+    }
     return _db.collection('placementPreferences').where('groupId', isEqualTo: groupId)
       .where('userId', isEqualTo: uid).where('active', isEqualTo: true).snapshots();
   }
-  void dispose() { if (_ownsClient) _client.close(); }
+  void dispose() { if (_ownsClient) { _client.close(); } }
 }
 
 @immutable
