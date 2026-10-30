@@ -6,6 +6,7 @@ import '../theme.dart';
 import 'feedback_screen.dart';
 import 'formation_screen.dart' show teamLabel;
 import 'group_card_palette.dart';
+import 'placement_preferences_screen.dart';
 
 /// Opens the star-rating form for the caller's team, prefilled when editing.
 Future<void> openFeedback(
@@ -28,6 +29,7 @@ Future<void> openFeedback(
     (_) => false,
   );
   if (!context.mounted) return;
+  Map<String, int>? sent;
   await Navigator.of(context).push<void>(
     MaterialPageRoute<void>(
       builder: (_) => FeedbackScreen(
@@ -40,10 +42,16 @@ Future<void> openFeedback(
           // Consent is copied onto feedback at write time, so set it first.
           if (agreed != consent) await backend.setLearningConsent(agreed);
           await backend.submitFeedback(activity.id, scores);
+          sent = scores;
         },
       ),
     ),
   );
+  // Not keen to rejoin: offer to keep apart next time, privately.
+  final rejoin = sent?['rejoin'];
+  if (rejoin != null && rejoin <= preferencePromptRejoinAt && context.mounted) {
+    await offerTeammatePreferences(context, backend, groupId, activity.id);
+  }
 }
 
 /// Activities already offered the one-time request in this app session.
