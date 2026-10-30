@@ -212,9 +212,12 @@ class MyGroupsHome extends StatelessWidget {
   }
 
   Widget _card(BuildContext context, GroupSummary group, int joinedIndex) {
-    final palette = group.pending ? GroupCardPalette.pending
-        : GroupCardPalette.fromTheme(group.themeColor,
-            fallback: GroupCardPalette.forGroup(joinedIndex));
+    // Four-color rotation by position, not groups.themeColor (always mint
+    // for groups created in the app); pending stays lavender.
+    final palette = GroupCardPalette.forGroup(
+      joinedIndex,
+      isPending: group.pending,
+    );
 
     return _GroupCard(
       name: group.name,

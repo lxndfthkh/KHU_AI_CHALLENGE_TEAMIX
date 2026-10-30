@@ -549,13 +549,7 @@ class _RealSubgroupDetailScreenState extends State<RealSubgroupDetailScreen> {
                 questions: () => backend.questions(widget.activityId),
                 palette: widget.palette,
               ),
-        palette: GroupCardPalette.fromTheme(
-          activity!.themeColor,
-          fallback: GroupCardPalette.fromTheme(
-            widget.themeColor,
-            fallback: widget.palette,
-          ),
-        ),
+        palette: widget.palette,
       );
     },
   );

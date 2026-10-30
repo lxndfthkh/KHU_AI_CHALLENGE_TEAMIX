@@ -569,13 +569,8 @@ class _RealActivitiesState extends State<_RealActivities> {
           for (final activity in activities)
             Builder(
               builder: (context) {
-                final palette = GroupCardPalette.fromTheme(
-                  activity.themeColor,
-                  fallback: GroupCardPalette.fromTheme(
-                    widget.themeColor,
-                    fallback: widget.palette,
-                  ),
-                );
+                // Subgroups share their group's card color.
+                final palette = widget.palette;
                 return Padding(
                   padding: const EdgeInsets.only(bottom: 10),
                   child: _Activity(
