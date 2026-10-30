@@ -14,6 +14,8 @@ function posInt(v,max){check(Number.isInteger(v)&&v>0&&v<=max,'Invalid positive 
 // Matching engine criteria and the question type each requires (algorithm/repository.py CRITERIA).
 const CRITERIA={role:'single',time:'multiple',interest:'multiple',experience:'scale'};
 const TYPES=['single','multiple','scale'];
+// Personality axes: each axis averages 1-3 required scale questions (reverse items scored 6 - answer).
+const MAX_TRAITS=4, MAX_TRAIT_ITEMS=3;
 
 function question(q,order){
   check(plain(q),'Question required');
@@ -43,7 +45,7 @@ function activity(d){
 
 function matching(m,questions){
   check(plain(m),'Matching settings required');
-  check(Object.keys(m).every(k=>['method','questionCriteria','priority','requireCommonTime'].includes(k)),'Unknown matching field');
+  check(Object.keys(m).every(k=>['method','questionCriteria','priority','requireCommonTime','traits'].includes(k)),'Unknown matching field');
   check(['balanced','similar'].includes(m.method),'Invalid method');
   check(plain(m.questionCriteria),'questionCriteria required');
   const byId=new Map(questions.map(q=>[q.id,q])),used=new Set();
@@ -54,14 +56,35 @@ function matching(m,questions){
     check(q.required,'Matching questions must be required');
     check(!used.has(criterion),'Each criterion maps to one question');used.add(criterion);
   }
+  const traits=traitAxes(m.traits,byId,new Set(Object.keys(m.questionCriteria)));
   const enabledQuestionIds=questions.filter(q=>q.id in m.questionCriteria).map(q=>q.id);
-  const expected=[...used,'size'];
-  const priority=m.priority===undefined?[...enabledQuestionIds.map(q=>m.questionCriteria[q]),'size']:m.priority;
+  const expected=[...used,...(traits.length?['personality']:[]),'size'];
+  const priority=m.priority===undefined?[...enabledQuestionIds.map(q=>m.questionCriteria[q]),...(traits.length?['personality']:[]),'size']:m.priority;
   check(Array.isArray(priority)&&priority.length===expected.length&&new Set(priority).size===expected.length&&priority.every(k=>expected.includes(k)),'Priority must list mapped criteria plus size once each');
   const requireCommonTime=m.requireCommonTime===true;
   check(m.requireCommonTime===undefined||typeof m.requireCommonTime==='boolean','requireCommonTime must be boolean');
   check(!requireCommonTime||used.has('time'),'Common time requires a time question');
-  return {method:m.method,enabledQuestionIds,questionCriteria:{...m.questionCriteria},priority:[...priority],requireCommonTime,requiredRoles:[]};
+  return {method:m.method,enabledQuestionIds,questionCriteria:{...m.questionCriteria},priority:[...priority],requireCommonTime,requiredRoles:[],...(traits.length?{traits}:{})};
+}
+
+function traitAxes(input,byId,taken){
+  if(input===undefined||input===null)return [];
+  check(Array.isArray(input)&&input.length<=MAX_TRAITS,`Up to ${MAX_TRAITS} personality axes`);
+  const ids=new Set(),usedQ=new Set(taken);
+  return input.map(t=>{
+    check(plain(t)&&Object.keys(t).every(k=>['id','label','items'].includes(k)),'Invalid personality axis');
+    check(typeof t.id==='string'&&/^[a-z0-9]{1,32}$/.test(t.id)&&!ids.has(t.id),'Axis ID must be unique lowercase letters/digits');ids.add(t.id);
+    check(Array.isArray(t.items)&&t.items.length>0&&t.items.length<=MAX_TRAIT_ITEMS,`Each axis needs 1-${MAX_TRAIT_ITEMS} questions`);
+    const items=t.items.map(i=>{
+      check(plain(i)&&Object.keys(i).every(k=>['questionId','reverse'].includes(k)),'Invalid axis item');
+      const q=byId.get(i.questionId);
+      check(q&&q.enabled&&q.required&&q.type==='scale','Axis questions must be enabled, required scale questions');
+      check(!usedQ.has(q.id),'A question can belong to one criterion or axis only');usedQ.add(q.id);
+      check(i.reverse===undefined||typeof i.reverse==='boolean','reverse must be boolean');
+      return {questionId:q.id,reverse:i.reverse===true};
+    });
+    return {id:t.id,label:text(t.label,30),items};
+  });
 }
 
 // answers keyed by question ID; questions = enabled question docs ({id,type,options,required}).
@@ -82,4 +105,4 @@ function answers(input,questions){
 }
 
 const MAX_PREFERENCES=2;
-module.exports={ValidationError,check,plain,text,optionalText,id,noUnderscore,color,activity,matching,answers,MAX_PREFERENCES,CRITERIA};
+module.exports={ValidationError,check,plain,text,optionalText,id,noUnderscore,color,activity,matching,answers,MAX_PREFERENCES,CRITERIA,MAX_TRAITS,MAX_TRAIT_ITEMS};
