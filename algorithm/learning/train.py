@@ -169,9 +169,9 @@ def reformation_check(db, b):
     return {'status': 'no_recent_runs' if not checks else 'passed' if all(c['passed'] for c in checks) else 'failed', 'activities': checks}
 
 
-def should_train(rows_now, last_run, now):
-    """8장: monthly, or >= 10 new rows since the last training run."""
-    if last_run is None:
+def should_train(rows_now, last_run, now, dirty=False):
+    """8장: monthly, or >= 10 new rows since the last training run. 12장: a deletion (dataset dirty) also makes it due."""
+    if last_run is None or dirty:
         return True
     last = last_run['trainedAt']
     return rows_now - last_run['rowCount'] >= NEW_ROWS_TRIGGER or (now.year, now.month) != (last.year, last.month)
@@ -182,7 +182,8 @@ def run_training(db, dataset='fx1', now=None, force=False, seed=0):
     rows = [d.to_dict() for d in db.collection(f'trainingDatasets/{dataset}/rows').stream()]
     runs = db.collection('trainingRuns').order_by('trainedAt', direction='DESCENDING').limit(1).stream()
     last = next((r.to_dict() for r in runs), None)
-    if not force and not should_train(len(rows), last, now):
+    meta = db.document(f'trainingDatasets/{dataset}').get().to_dict() or {}
+    if not force and not should_train(len(rows), last, now, dirty=meta.get('dirty') is True):
         return {'status': 'not_due'}
     result = train([{k: v for k, v in r.items() if k != 'extractedAt'} for r in rows], seed=seed)
     if result['status'] == 'candidate':
@@ -192,6 +193,8 @@ def run_training(db, dataset='fx1', now=None, force=False, seed=0):
     run_id = f"{now.strftime('%Y%m%dT%H%M%S')}_{result['datasetHash'][:8]}"
     db.document(f'trainingRuns/{run_id}').set({**{k: result[k] for k in ('status', 'rowCount', 'activityCount', 'datasetHash', 'trainerVersion')},
                                                 'trainedAt': now, 'datasetId': dataset, 'modelId': run_id if result['status'] == 'candidate' else None})
+    # Deleted reviews are now out of the data this run saw (12장: the next cycle retrains without them).
+    db.document(f'trainingDatasets/{dataset}').set({'dirty': False, 'cleanedAt': now}, merge=True)
     if result['status'] == 'candidate':
         db.document(f'modelVersions/{run_id}').set({**result, 'datasetId': dataset, 'trainedAt': now, 'status': 'candidate',
                                                     'extractorVersion': 'fx1',

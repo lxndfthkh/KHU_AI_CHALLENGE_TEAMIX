@@ -196,7 +196,8 @@ def translate(g, a, state, pending, stamp):
     out, publication, activity_patch, settings_patch = [], None, {}, {}
     for path, value, merge in pending:
         if path.startswith('serverRuns/'):
-            out.append(('set', path, value, merge))
+            # activityId lets stage 9 find and scrub a deleted user's answer copies.
+            out.append(('set', path, {**value, 'activityId': a, 'groupId': g}, merge))
             continue
         if not path.startswith(prefix):
             continue  # internal notifications are rebuilt in main's shape by publication_writes

@@ -90,6 +90,12 @@ class FeedbackLearningApi {
   Future<Map<String, dynamic>> submitFeedback(String activityId, Map<String, int> scores) =>
     call('submitFeedback', {'activityId': activityId, 'scores': scores});
   Future<Map<String, dynamic>> closeFeedback(String activityId) => call('closeFeedback', {'activityId': activityId});
+  // Stage 9 (functions/src/privacy.js).
+  Future<Map<String, dynamic>> deleteFeedback(String activityId) => call('deleteFeedback', {'activityId': activityId});
+  /// Blocked when you are the only officer of the group.
+  Future<Map<String, dynamic>> leaveGroup(String groupId) => call('leaveGroup', {'groupId': groupId});
+  /// Deletes personal data; published team records keep "삭제된 사용자". Blocked for a sole officer.
+  Future<Map<String, dynamic>> deleteAccount() => call('deleteAccount', {'confirm': true});
   /// Own preferences only; firestore.rules allow the author to read them.
   Stream<QuerySnapshot<Map<String, dynamic>>> ownPreferences(String groupId) {
     final uid = _auth.currentUser?.uid;

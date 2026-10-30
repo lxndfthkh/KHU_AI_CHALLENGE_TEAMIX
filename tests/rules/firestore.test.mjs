@@ -209,7 +209,11 @@ test('학습 데이터·모델·실행 기록은 앱에서 읽을 수 없고, �
     await setDoc(ref(s, 'trainingRuns/t1'), { status: 'candidate' });
     await setDoc(ref(s, 'appConfig/learning'), { activeModelId: 'm1' });
   });
-  for (const path of ['trainingDatasets/fx1/rows/r', 'modelVersions/m1', 'trainingRuns/t1']) {
+  await env.withSecurityRulesDisabled(async (context) => {
+    await setDoc(ref(context.firestore(), 'learningMonitor/a'), { yOverallMean: 4 });
+    await setDoc(ref(context.firestore(), 'learningReports/latest'), { status: 'waiting' });
+  });
+  for (const path of ['trainingDatasets/fx1/rows/r', 'modelVersions/m1', 'trainingRuns/t1', 'learningMonitor/a', 'learningReports/latest']) {
     await assertFails(getDoc(ref(db('admin'), path)));
   }
   await assertSucceeds(getDoc(ref(db('member'), 'appConfig/learning')));

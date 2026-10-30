@@ -120,6 +120,8 @@ def main(argv=None):
     for a in ids:
         result = extract_activity(db, a)
         print(f"{a}: {result['status']} rows={result['rows']}")
+    from learning import monitor
+    print('monitor:', monitor.run(db)['status'])
 
 
 if __name__ == '__main__':

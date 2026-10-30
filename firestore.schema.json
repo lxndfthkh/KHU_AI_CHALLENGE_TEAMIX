@@ -246,7 +246,8 @@
     "path": "trainingDatasets/fx1, trainingDatasets/fx1/rows/{activityId}_v{n}_{teamId}, trainingDatasets/fx1/activities/{activityId}",
     "fields": {
       "rows": "one team of the ending publication: activityType, formationMode, teamCount, teamSize, active_* and loss_* per criterion (loss = publication losses / 1000), commonSlotCount, manuallyEdited, republishCount, y_overall/schedule/roles/rejoin, weight_* (v3 default weights), n_reviews, response_rate, activityId, teamVersion, teamId, sourceRefs (sha256 of feedback paths), extractorVersion fx1",
-      "activities": "re-extraction marker {extractedAt, rowIds, summaryUpdatedAt}"
+      "activities": "re-extraction marker {extractedAt, rowIds, summaryUpdatedAt}",
+      "dataset": "trainingDatasets/fx1 {extractorVersion, updatedAt, dirty, dirtyAt, cleanedAt}: dirty is set when feedback or an account is deleted and cleared by the next training run"
     },
     "notes": "Server-only (default deny). Written by algorithm/learning/extract.py after feedback closes. No user IDs, answers, private preferences, or internal scores. Included reviews: learningConsent and membershipRatio >= 0.5; rows need >= 2 included reviews and response rate >= 0.5."
   },
@@ -299,5 +300,27 @@
       "activatedBy": "uid"
     },
     "notes": "Signed-in read (existing appConfig rule), server write (models.js). The formation engine applies b only when the activity's learningEnabled is true."
+  },
+  "learningMonitor": {
+    "path": "learningMonitor/{activityId}",
+    "fields": {
+      "modelId": "model used by the formation behind the ending publication, or null",
+      "source": "ai | manual (manually edited publications have no run)",
+      "respondents": "integer",
+      "yOverallMean": "number or null",
+      "feedbackClosedAt": "timestamp",
+      "recordedAt": "timestamp"
+    },
+    "notes": "Server-only (default deny). Written by algorithm/learning/monitor.py after extraction (편성학습_v4 11장)."
+  },
+  "learningReports": {
+    "path": "learningReports/latest",
+    "fields": {
+      "status": "waiting | ready",
+      "groups": "map modelId|default -> {activities, meanYOverall}",
+      "modelsReady": "models with >= 10 activities",
+      "caution": "text: no causal claims"
+    },
+    "notes": "Server-only (default deny)."
   }
 }

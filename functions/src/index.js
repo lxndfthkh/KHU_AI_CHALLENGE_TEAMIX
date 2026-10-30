@@ -1,5 +1,5 @@
 'use strict';
-// Stage 1-2, 4 and 7 callables. Names match docs/FIRESTORE.md; logic lives in commands.js, activity.js, models.js.
+// Stage 1-2, 4, 7 and 9 callables. Names match docs/FIRESTORE.md; logic lives in commands.js, activity.js, models.js, privacy.js.
 // Formation commands (closeRecruitment, generateDraft, moveMember, publishTeams) are served by algorithm/server_v3.py.
 const {initializeApp}=require('firebase-admin/app');
 const {getFirestore}=require('firebase-admin/firestore');
@@ -11,6 +11,8 @@ const {CommandError}=require('./common');
 const C=require('./commands');
 const A=require('./activity');
 const M=require('./models');
+const P=require('./privacy');
+const {getAuth}=require('firebase-admin/auth');
 initializeApp();
 const db=getFirestore();
 const region='asia-northeast3';
@@ -33,6 +35,9 @@ for(const name of ['createGroup','issueInvitation','previewInvitation','requestJ
 for(const name of ['setLearningConsent','startActivity','endActivity','submitFeedback','closeFeedback'])exports[name]=callable(A[name]);
 // Service admin only (custom claim admin: true), checked inside each command.
 for(const name of ['approveModel','activateModel','deactivateModel'])exports[name]=callable(M[name]);
+exports.deleteFeedback=callable(P.deleteFeedback);
+exports.leaveGroup=callable(P.leaveGroup);
+exports.deleteAccount=callable((db,uid,d)=>P.deleteAccount(db,uid,d,{deleteAuthUser:u=>getAuth().deleteUser(u)}));
 
 exports.closeExpiredFeedback=onSchedule({region,schedule:'every 60 minutes'},async()=>{
   const closed=await A.closeExpiredFeedback(db);
