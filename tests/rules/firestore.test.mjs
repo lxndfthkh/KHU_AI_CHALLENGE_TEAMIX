@@ -3,7 +3,7 @@ import { before, beforeEach, after, test } from 'node:test';
 import assert from 'node:assert/strict';
 import { initializeTestEnvironment, assertFails, assertSucceeds } from '@firebase/rules-unit-testing';
 import { doc, setDoc, getDoc, getDocs, updateDoc, deleteDoc, collection,
-  query, where, Timestamp, serverTimestamp } from 'firebase/firestore';
+  query, where, orderBy, limit, Timestamp, serverTimestamp } from 'firebase/firestore';
 
 // Paths and fields follow firestore.schema.json / docs/FIRESTORE.md.
 let env;
@@ -112,6 +112,20 @@ test('홈 화면 조회: 본인 멤버십만 status로 걸러 조회할 수 있�
   const result = await assertSucceeds(getDocs(mine));
   assert.equal(result.size, 1);
   await assertFails(getDocs(query(collection(s, 'memberships'), where('groupId', '==', 'g'))));
+});
+
+test('앱 홈 쿼리: lib/data/firestore_groups_source.dart와 같은 조건이 허용된다', async () => {
+  const s = db('member');
+  await assertSucceeds(getDocs(query(collection(s, 'memberships'), where('userId', '==', 'member'),
+    where('status', 'in', ['approved', 'pending']), orderBy('updatedAt', 'desc'))));
+  await assertSucceeds(getDoc(ref(s, 'groups/g')));
+  const recruiting = (store) => query(collection(store, 'activities'), where('groupId', '==', 'g'),
+    where('status', '==', 'recruiting'), orderBy('createdAt', 'desc'), limit(2));
+  const result = await assertSucceeds(getDocs(recruiting(s)));
+  assert.equal(result.size, 1);
+  // Pending members get only their membership; the group query is refused.
+  await assertFails(getDocs(recruiting(db('applicant'))));
+  await assertFails(getDocs(query(collection(s, 'activities'), where('status', '==', 'recruiting'))));
 });
 
 test('멤버십은 클라이언트가 만들거나 역할을 올릴 수 없다', async () => {

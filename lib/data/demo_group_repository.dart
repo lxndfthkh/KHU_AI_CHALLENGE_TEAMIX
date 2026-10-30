@@ -1,3 +1,4 @@
+import '../models/group_summary.dart';
 import 'group_repository.dart';
 
 class DemoGroupRepository implements GroupRepository {
@@ -49,6 +50,20 @@ class DemoGroupRepository implements GroupRepository {
         },
       ),
   ];
+  /// Demo memberships in the same shape as the Firestore home.
+  static List<GroupSummary> summariesOf(GroupRepository repository) => [
+    for (final MapEntry(key: name, value: status)
+        in repository.memberships.entries)
+      GroupSummary(
+        groupId: name,
+        name: name,
+        role: status == 'owner' ? 'admin' : 'member',
+        status: status == 'pending' ? 'pending' : 'approved',
+        isOwner: status == 'owner',
+        activityTitles: exampleActivities[name] ?? const <String>[],
+      ),
+  ];
+
   final Map<String, String> _memberships = <String, String>{};
 
   @override

@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 
-import '../data/demo_group_repository.dart';
-import '../data/group_repository.dart';
+import '../models/group_summary.dart';
 import '../theme.dart';
 import 'group_card_palette.dart';
 import 'group_home.dart';
@@ -9,26 +8,25 @@ import 'group_home.dart';
 class MyGroupsHome extends StatelessWidget {
   const MyGroupsHome({
     super.key,
-    required this.repository,
+    required this.groups,
     required this.onCreateGroup,
     required this.onJoinGroup,
     required this.onSignOut,
+    this.loadFailed = false,
     this.demoMode = false,
     this.busy = false,
     this.onToggleDemoGroups,
   });
 
-  final GroupRepository repository;
+  /// `null` while the first snapshot is loading.
+  final List<GroupSummary>? groups;
+  final bool loadFailed;
   final VoidCallback onCreateGroup;
   final VoidCallback onJoinGroup;
   final Future<void> Function() onSignOut;
   final bool demoMode;
   final bool busy;
   final VoidCallback? onToggleDemoGroups;
-
-  void _notice(BuildContext context, String text) {
-    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(text)));
-  }
 
   void _add(BuildContext context) {
     showModalBottomSheet<void>(
@@ -78,7 +76,7 @@ class MyGroupsHome extends StatelessWidget {
   }
 
   void _account(BuildContext context) {
-    final empty = repository.memberships.isEmpty;
+    final empty = groups?.isEmpty ?? true;
 
     showModalBottomSheet<void>(
       context: context,
@@ -98,7 +96,7 @@ class MyGroupsHome extends StatelessWidget {
               Text(
                 demoMode
                     ? '디자인 시연 모드 · 실제 계정에 연결되지 않았어요.'
-                    : '인증만 실제 연결 · 모임 정보는 메모리 시연 데이터예요.',
+                    : '내 모임은 Firestore에서 불러와요. 모임 만들기·참가는 서버 기능 연결 후 지원돼요.',
                 style: const TextStyle(color: teamixMuted),
               ),
               if (demoMode && onToggleDemoGroups != null)
@@ -153,60 +151,66 @@ class MyGroupsHome extends StatelessWidget {
     ),
   );
 
-  String _statusLabel(String status) {
-    switch (status) {
-      case 'owner':
-        return '대표자';
-      case 'member':
-        return '부원';
-      case 'pending':
-        return '승인 대기';
-      default:
-        return '상태 확인 필요';
-    }
-  }
-
-  void _openGroup(BuildContext context, String name, String status) {
-    if (status != 'owner' && status != 'member' && status != 'admin') {
-      _notice(context, '모임 상세는 아직 연결되지 않은 시연 화면이에요.');
-      return;
-    }
+  void _openGroup(BuildContext context, GroupSummary group) {
     Navigator.of(context).push<void>(
       MaterialPageRoute<void>(
         builder: (_) =>
-            GroupHome(groupName: name, isOperator: status == 'owner'),
+            GroupHome(groupName: group.name, isOperator: group.isOperator),
       ),
     );
   }
 
-  Widget _card(
-    BuildContext context,
-    MapEntry<String, String> entry,
-    int joinedIndex,
-  ) {
-    final name = entry.key;
-    final status = entry.value;
-    final pending = status == 'pending';
-    final palette = GroupCardPalette.forGroup(joinedIndex, isPending: pending);
-
-    final activities =
-        DemoGroupRepository.exampleActivities[name] ?? const <String>[];
+  Widget _card(BuildContext context, GroupSummary group, int joinedIndex) {
+    final palette = GroupCardPalette.forGroup(
+      joinedIndex,
+      isPending: group.pending,
+    );
 
     return _GroupCard(
-      name: name,
+      name: group.name,
       color: palette.background,
       accent: palette.accent,
-      activities: activities,
-      roleLabel: _statusLabel(status),
-      pending: pending,
-      onTap: pending || busy ? null : () => _openGroup(context, name, status),
+      activities: group.activityTitles,
+      roleLabel: group.roleLabel,
+      pending: group.pending,
+      onTap: group.pending || busy ? null : () => _openGroup(context, group),
     );
+  }
+
+  List<Widget> _groupList(BuildContext context) {
+    final entries = groups;
+    if (loadFailed) {
+      return [
+        const _LoadMessage(
+          key: ValueKey('groups-load-failed'),
+          text: '내 모임을 불러오지 못했어요.\n잠시 후 다시 열어 주세요.',
+        ),
+      ];
+    }
+    if (entries == null) {
+      return const [
+        Padding(
+          padding: EdgeInsets.only(top: 40),
+          child: Center(child: CircularProgressIndicator()),
+        ),
+      ];
+    }
+    if (entries.isEmpty) return const [_EmptyGroups()];
+    return [
+      for (var i = 0; i < entries.length; i++) ...[
+        if (i > 0) const SizedBox(height: 8),
+        _card(
+          context,
+          entries[i],
+          // Pending groups don't advance the joined-color rotation.
+          entries.take(i).where((g) => !g.pending).length,
+        ),
+      ],
+    ];
   }
 
   @override
   Widget build(BuildContext context) {
-    final entries = repository.memberships.entries.toList();
-
     return Scaffold(
       body: SafeArea(
         child: Align(
@@ -268,18 +272,7 @@ class MyGroupsHome extends StatelessWidget {
                   ),
                 ),
                 const SizedBox(height: 12),
-                if (entries.isEmpty)
-                  const _EmptyGroups()
-                else
-                  for (var i = 0; i < entries.length; i++) ...[
-                    if (i > 0) const SizedBox(height: 8),
-                    _card(
-                      context,
-                      entries[i],
-                      // Pending groups don't advance the joined-color rotation.
-                      entries.take(i).where((e) => e.value != 'pending').length,
-                    ),
-                  ],
+                ..._groupList(context),
               ],
             ),
           ),
@@ -430,6 +423,33 @@ class _GroupCard extends StatelessWidget {
             ),
           ],
         ),
+      ),
+    ),
+  );
+}
+
+class _LoadMessage extends StatelessWidget {
+  const _LoadMessage({super.key, required this.text});
+
+  final String text;
+
+  @override
+  Widget build(BuildContext context) => Container(
+    width: double.infinity,
+    margin: const EdgeInsets.only(top: 18),
+    padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 28),
+    decoration: BoxDecoration(
+      color: teamixEmptyBackground,
+      border: Border.all(color: teamixEmptyBorder),
+      borderRadius: BorderRadius.circular(24),
+    ),
+    child: Text(
+      text,
+      textAlign: TextAlign.center,
+      style: const TextStyle(
+        fontSize: 13,
+        height: 1.7,
+        color: teamixEmptyTitle,
       ),
     ),
   );
