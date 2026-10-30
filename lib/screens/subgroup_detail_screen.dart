@@ -15,6 +15,8 @@ class SubgroupDetailScreen extends StatelessWidget {
     this.palette = GroupCardPalette.defaultJoined,
     this.registration,
     this.onApply,
+    this.onManageFormation,
+    this.myTeam,
   });
 
   final String groupName;
@@ -26,6 +28,12 @@ class SubgroupDetailScreen extends StatelessWidget {
 
   /// Opens the survey (new or edit); null when not recruiting.
   final void Function(Registration? current)? onApply;
+
+  /// Opens the real formation screen; null keeps the demo matching screen.
+  final VoidCallback? onManageFormation;
+
+  /// The participant's published team, if any.
+  final Widget? myTeam;
 
   /// The parent group's color from the groups home.
   final GroupCardPalette palette;
@@ -195,6 +203,7 @@ class SubgroupDetailScreen extends StatelessWidget {
                   ]),
                 ),
               ),
+              ?myTeam,
               if (isOperator) ...[
                 const SizedBox(height: 22),
                 Material(
@@ -226,11 +235,13 @@ class SubgroupDetailScreen extends StatelessWidget {
                             child: Text('신청 현황 · ${subgroup.applicationCount}명'),
                           ),
                           OutlinedButton(
-                            onPressed: () => Navigator.of(context).push<void>(
-                              MaterialPageRoute<void>(
-                                builder: (_) => const MatchingSettingsScreen(),
-                              ),
-                            ),
+                            onPressed: onManageFormation ??
+                                () => Navigator.of(context).push<void>(
+                                      MaterialPageRoute<void>(
+                                        builder: (_) =>
+                                            const MatchingSettingsScreen(),
+                                      ),
+                                    ),
                             child: const Text('팀 편성 관리 →'),
                           ),
                         ]),

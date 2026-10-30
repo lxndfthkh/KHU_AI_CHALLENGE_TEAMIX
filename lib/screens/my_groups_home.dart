@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../data/activity_backend.dart';
+import '../data/formation_backend.dart';
 import '../data/group_admin.dart';
 import '../models/group_summary.dart';
 import '../theme.dart';
@@ -21,6 +22,7 @@ class MyGroupsHome extends StatelessWidget {
     this.onToggleDemoGroups,
     this.groupAdmin,
     this.activityBackend,
+    this.formationBackend,
   });
 
   /// `null` while the first snapshot is loading.
@@ -39,6 +41,9 @@ class MyGroupsHome extends StatelessWidget {
 
   /// Firestore subgroups and registrations; null in demo mode.
   final ActivityBackend? activityBackend;
+
+  /// Formation server client for operators; null if not configured.
+  final FormationBackend? formationBackend;
 
   void _add(BuildContext context) {
     showModalBottomSheet<void>(
@@ -177,6 +182,7 @@ class MyGroupsHome extends StatelessWidget {
           palette: palette,
           groupId: activityBackend == null ? null : group.groupId,
           activityBackend: activityBackend,
+          formationBackend: group.isOperator ? formationBackend : null,
           onIssueInvite: admin == null
               ? null
               : () => admin.issueInvitation(group.groupId),

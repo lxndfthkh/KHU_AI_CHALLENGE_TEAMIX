@@ -3,10 +3,13 @@ import 'package:flutter/material.dart';
 import '../theme.dart';
 import '../data/activity_backend.dart';
 import '../data/demo_group_repository.dart';
+import '../data/formation_backend.dart';
 import '../models/activity.dart';
 import '../widgets/invite_code_dialog.dart';
+import '../widgets/my_team_card.dart';
 import 'group_card_palette.dart';
 import 'create_activity_screen.dart';
+import 'formation_screen.dart';
 import 'registration_screen.dart';
 import 'subgroup_detail_screen.dart';
 import 'matching_settings_screen.dart';
@@ -22,6 +25,7 @@ class GroupHome extends StatelessWidget {
     this.onOpenJoinRequests,
     this.groupId,
     this.activityBackend,
+    this.formationBackend,
   });
 
   final String groupName;
@@ -39,6 +43,38 @@ class GroupHome extends StatelessWidget {
   /// Firestore group and subgroup data; both null in demo mode.
   final String? groupId;
   final ActivityBackend? activityBackend;
+
+  /// Formation server client; null when FORMATION_URL isn't configured.
+  final FormationBackend? formationBackend;
+
+  Future<void> _manageFormation(
+    BuildContext context,
+    ActivityBackend backend,
+    String groupId,
+    Activity activity,
+  ) async {
+    final formation = formationBackend;
+    if (formation == null) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+        content: Text('편성 서버 주소가 설정되지 않았어요. FORMATION_URL로 실행해 주세요.'),
+      ));
+      return;
+    }
+    // Labels only; the screen still works with raw option IDs.
+    final questions = await backend
+        .questions(activity.id)
+        .catchError((_) => const <ActivityQuestion>[]);
+    if (!context.mounted) return;
+    Navigator.of(context).push<void>(MaterialPageRoute<void>(
+      builder: (_) => FormationScreen(
+        groupId: groupId,
+        activity: backend.activity(activity.id),
+        backend: formation,
+        questions: questions,
+        palette: palette,
+      ),
+    ));
+  }
 
   void _openActivity(
     BuildContext context,
@@ -58,6 +94,13 @@ class GroupHome extends StatelessWidget {
         onApply: !activity.recruiting
             ? null
             : (current) => _apply(detail, backend, activity, current),
+        onManageFormation: () =>
+            _manageFormation(detail, backend, groupId, activity),
+        myTeam: MyTeamCard(
+          team: () => backend.myTeam(groupId, activity.id),
+          questions: () => backend.questions(activity.id),
+          palette: palette,
+        ),
       ),
     ));
   }
@@ -374,7 +417,8 @@ class GroupHome extends StatelessWidget {
                 ],
               ),
               const SizedBox(height: 16),
-              if (isOperator) FilledButton.icon(
+              // Demo only: real teams are formed per subgroup (팀 편성 관리).
+              if (isOperator && activityBackend == null) FilledButton.icon(
                 onPressed: () => Navigator.of(context).push<void>(
                   MaterialPageRoute<void>(
                     builder: (_) => const MatchingSettingsScreen(),

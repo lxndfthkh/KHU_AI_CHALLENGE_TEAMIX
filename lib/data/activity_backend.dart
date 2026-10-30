@@ -1,6 +1,7 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 
 import '../models/activity.dart';
+import '../models/formation.dart';
 import 'feedback_learning_api.dart';
 
 /// Subgroup (activity) data for the group home and its screens. Reads come
@@ -8,6 +9,10 @@ import 'feedback_learning_api.dart';
 /// commands in functions/ because the rules refuse them. Null in demo mode.
 abstract interface class ActivityBackend {
   Stream<List<Activity>> activities(String groupId);
+  Stream<Activity?> activity(String activityId);
+
+  /// The caller's published team (`teamViews/{a}_{uid}`), null before.
+  Stream<MyTeam?> myTeam(String groupId, String activityId);
   Future<List<ActivityQuestion>> questions(String activityId);
   Stream<Registration?> myRegistration(String groupId, String activityId);
   Future<String> createActivity(String groupId, NewActivity activity);
@@ -44,6 +49,26 @@ class FirebaseActivityBackend implements ActivityBackend {
       .snapshots()
       .map(
         (s) => [for (final d in s.docs) Activity.fromFirestore(d.id, d.data())],
+      );
+
+  @override
+  Stream<Activity?> activity(String activityId) => _db
+      .doc('activities/$activityId')
+      .snapshots()
+      .map((d) => d.exists ? Activity.fromFirestore(d.id, d.data()!) : null);
+
+  /// A query for the same reason as [myRegistration]; groupId and activityId
+  /// let the rules check membership and participation.
+  @override
+  Stream<MyTeam?> myTeam(String groupId, String activityId) => _db
+      .collection('teamViews')
+      .where('groupId', isEqualTo: groupId)
+      .where('activityId', isEqualTo: activityId)
+      .where('userId', isEqualTo: uid)
+      .snapshots()
+      .map(
+        (s) =>
+            s.docs.isEmpty ? null : MyTeam.fromFirestore(s.docs.first.data()),
       );
 
   @override

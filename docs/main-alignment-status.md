@@ -8,7 +8,7 @@ main 061b0ec(dca8e20 규칙 복구 포함)를 병합했다. 저장 구조는 mai
 |---|---|---|
 | 1~2단계 서버 명령 (소모임·신청·선호) | `functions/src/commands.js` | `docs/feedback-learning-stages-1-2.md` |
 | 3단계 편성 API | `algorithm/server_v3.py`, `repository.py` | `docs/feedback-learning-stage3-boundary-status.md` |
-| Flutter 호출 계층 | `lib/data/feedback_learning_api.dart`, `lib/services/formation_api.dart` | 화면 연결 전 |
+| Flutter 호출 계층 | `lib/data/activity_backend.dart`(소모임·신청·내 팀), `lib/data/formation_backend.dart`(편성) | 화면 연결됨: 소모임 창설, 참가 신청, 운영진 팀 편성(`formation_screen.dart`), 내 팀 카드 |
 
 ## 서버 구분 — 혼용 금지
 `algorithm/server.py`는 main의 시연용 `/solve` 서버다. 원본 참가자 입력을 받으므로 실데이터에 쓰지 않는다.
@@ -21,6 +21,7 @@ main 061b0ec(dca8e20 규칙 복구 포함)를 병합했다. 저장 구조는 mai
 - `flutter analyze`, `flutter test`
 
 ## 남은 일
-- Flutter 화면을 시연 데이터에서 위 호출 계층으로 바꾸기
+- 편성 서버 주소는 `flutter run --dart-define=FORMATION_URL=https://.../`로 넘긴다(Cloud Run 배포 후). 없으면 팀 편성 관리에서 안내만 나온다
+- 아직 화면 없음: 신청 취소, 범위 재편성·고정/해제, 초안 폐기, 활동 시작·종료·후기
 - 4단계(활동 종료·후기) 전에 학습 활용 동의의 저장 위치를 main 스키마에 정하기
 - 운영 배포 전: App Check, 푸시 알림, 운영 로깅 정책 검토. 배포는 담당자가 직접

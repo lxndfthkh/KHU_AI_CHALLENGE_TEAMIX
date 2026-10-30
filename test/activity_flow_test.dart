@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:teamix/data/activity_backend.dart';
 import 'package:teamix/models/activity.dart';
+import 'package:teamix/models/formation.dart';
 import 'package:teamix/screens/create_activity_screen.dart';
 import 'package:teamix/screens/group_home.dart';
 import 'package:teamix/screens/registration_screen.dart';
@@ -28,7 +29,7 @@ const sampleQuestions = [
   ActivityQuestion(id: 'experience', label: '경험 수준', type: 'scale', order: 2),
 ];
 
-final activity = Activity(
+final sampleActivity = Activity(
   id: 'a1',
   groupId: 'g1',
   title: '캠퍼스 해커톤',
@@ -48,8 +49,14 @@ class FakeBackend implements ActivityBackend {
   final submitted = <Map<String, Object>>[];
   final updated = <Map<String, Object>>[];
 
+  final team = StreamController<MyTeam?>.broadcast();
   @override
   Stream<List<Activity>> activities(String groupId) => list.stream;
+  @override
+  Stream<Activity?> activity(String id) => Stream.value(activity_);
+  Activity? activity_ = sampleActivity;
+  @override
+  Stream<MyTeam?> myTeam(String groupId, String activityId) => team.stream;
   @override
   Future<List<ActivityQuestion>> questions(String activityId) async =>
       sampleQuestionsOverride;
@@ -265,7 +272,7 @@ void main() {
     await tester.pumpWidget(
       app(
         RegistrationScreen(
-          activity: activity,
+          activity: sampleActivity,
           questions: sampleQuestions,
           onSubmit: (a) async => sent.add(a),
         ),
@@ -300,7 +307,7 @@ void main() {
         ),
       ),
     );
-    backend.list.add([activity]);
+    backend.list.add([sampleActivity]);
     await tester.pump();
     expect(find.text('캠퍼스 해커톤'), findsOneWidget);
     expect(find.text('6 / 20명 · 팀당 4명'), findsOneWidget);

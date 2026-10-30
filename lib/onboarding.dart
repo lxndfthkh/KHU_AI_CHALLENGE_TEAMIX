@@ -4,6 +4,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 
 import 'data/activity_backend.dart';
 import 'data/demo_group_repository.dart';
+import 'data/formation_backend.dart';
 import 'data/firestore_group_writer.dart';
 import 'data/firestore_groups_source.dart';
 import 'data/firestore_invitations.dart';
@@ -12,6 +13,7 @@ import 'data/group_repository.dart';
 import 'data/user_profile.dart';
 import 'models/group_summary.dart';
 import 'screens/my_groups_home.dart';
+import 'services/formation_api.dart';
 import 'screens/onboarding/auth.dart';
 import 'screens/onboarding/create_group.dart';
 import 'screens/onboarding/group_preview.dart';
@@ -221,6 +223,21 @@ class _EntryScreenState extends State<EntryScreen> {
     return activityBackend;
   }
 
+  /// algorithm/server_v3.py, e.g. its Cloud Run URL:
+  /// `flutter run --dart-define=FORMATION_URL=https://.../`.
+  static const formationUrl = String.fromEnvironment('FORMATION_URL');
+
+  FormationBackend? formationBackend;
+
+  FormationBackend? get formation {
+    if (formationUrl.isEmpty) return null;
+    final base = formationUrl.endsWith('/') ? formationUrl : '$formationUrl/';
+    return formationBackend ??= ServerFormationBackend(
+      FirebaseFirestore.instance,
+      FormationApi(baseUrl: Uri.parse(base)),
+    );
+  }
+
   GroupAdmin? get groupAdmin {
     final user = firestoreUser;
     return user == null
@@ -409,6 +426,7 @@ class _EntryScreenState extends State<EntryScreen> {
       myGroupsUid = null;
       activityBackend = null;
       activityBackendUid = null;
+      formationBackend = null;
       clearInvite();
       password.clear();
       confirmation.clear();
@@ -671,6 +689,7 @@ class _EntryScreenState extends State<EntryScreen> {
             onToggleDemoGroups: toggleDemoGroups,
             groupAdmin: uid == null ? null : groupAdmin,
             activityBackend: uid == null ? null : backendFor(uid),
+            formationBackend: uid == null ? null : formation,
           );
 
       content = uid == null
