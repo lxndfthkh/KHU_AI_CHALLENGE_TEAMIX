@@ -15,6 +15,7 @@ class GroupHome extends StatelessWidget {
     this.isOperator = false,
     this.palette = GroupCardPalette.defaultJoined,
     this.onIssueInvite,
+    this.onOpenJoinRequests,
   });
 
   final String groupName;
@@ -25,6 +26,9 @@ class GroupHome extends StatelessWidget {
 
   /// Issues a real invite code; null keeps the demo notice.
   final Future<String> Function()? onIssueInvite;
+
+  /// Opens the real join request list; null keeps the demo notice.
+  final VoidCallback? onOpenJoinRequests;
   void _detail(BuildContext context, DemoSubgroup subgroup) {
     Navigator.of(context).push<void>(MaterialPageRoute<void>(
       builder: (_) => SubgroupDetailScreen(
@@ -240,7 +244,8 @@ class GroupHome extends StatelessWidget {
                 borderRadius: BorderRadius.circular(14),
                 child: InkWell(
                   borderRadius: BorderRadius.circular(14),
-                  onTap: () => _preview(context, '가입 요청 관리'),
+                  onTap: onOpenJoinRequests ??
+                      () => _preview(context, '가입 요청 관리'),
                   child: const Padding(
                     padding: EdgeInsets.all(14),
                     child: Row(

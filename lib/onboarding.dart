@@ -6,6 +6,7 @@ import 'data/demo_group_repository.dart';
 import 'data/firestore_group_writer.dart';
 import 'data/firestore_groups_source.dart';
 import 'data/firestore_invitations.dart';
+import 'data/group_admin.dart';
 import 'data/group_repository.dart';
 import 'data/user_profile.dart';
 import 'models/group_summary.dart';
@@ -22,8 +23,8 @@ import 'widgets/onboarding_widgets.dart';
 
 export 'theme.dart' show ink, coral, mint, butter, lilac;
 
-// Auth, the groups home, group creation and invite-code join requests are
-// real; approving requests still needs the server commands in docs/FIRESTORE.md.
+// Auth, the groups home, group creation, invite codes and join approval are
+// real; subgroups and team formation still use demo data.
 class TeamixApp extends StatelessWidget {
   const TeamixApp({
     super.key,
@@ -207,18 +208,19 @@ class _EntryScreenState extends State<EntryScreen> {
     code.clear();
   }
 
-  Future<String> issueInvite(String groupId) => issueInvitation(
-    FirebaseFirestore.instance,
-    uid: firestoreUser!.uid,
-    groupId: groupId,
-  );
+  GroupAdmin? get groupAdmin {
+    final user = firestoreUser;
+    return user == null
+        ? null
+        : FirestoreGroupAdmin(FirebaseFirestore.instance, user.uid);
+  }
 
   Future<void> issueShareCode() async {
     final groupId = createdGroupId;
     if (groupId == null || busy) return;
     setState(() => busy = true);
     try {
-      final issued = await issueInvite(groupId);
+      final issued = await groupAdmin!.issueInvitation(groupId);
       if (mounted) setState(() => shareCode = issued);
     } catch (_) {
       if (mounted) toast('초대 코드를 만들지 못했어요. 잠시 후 다시 시도해 주세요.');
@@ -652,7 +654,7 @@ class _EntryScreenState extends State<EntryScreen> {
             onJoinGroup: () => go('invite'),
             onSignOut: signOut,
             onToggleDemoGroups: toggleDemoGroups,
-            onIssueInvite: uid == null ? null : issueInvite,
+            groupAdmin: uid == null ? null : groupAdmin,
           );
 
       content = uid == null
@@ -690,7 +692,7 @@ class _EntryScreenState extends State<EntryScreen> {
                 children: [
                   OnboardingWidgets(busy: busy).panel(lilac, [
                     const Text(
-                      '개발용 · 인증, 내 모임 목록, 모임 만들기, 초대 코드 참여 요청은 실제 연결. 가입 승인은 아직 지원하지 않아요.',
+                      '개발용 · 인증, 내 모임 목록, 모임 만들기, 초대 코드 참여, 가입 승인은 실제 연결. 소모임·팀 편성은 시연 데이터예요.',
                       style: TextStyle(fontSize: 12),
                     ),
                   ]),

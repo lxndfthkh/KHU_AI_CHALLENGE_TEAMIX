@@ -1,9 +1,11 @@
 import 'package:flutter/material.dart';
 
+import '../data/group_admin.dart';
 import '../models/group_summary.dart';
 import '../theme.dart';
 import 'group_card_palette.dart';
 import 'group_home.dart';
+import 'join_requests_screen.dart';
 
 class MyGroupsHome extends StatelessWidget {
   const MyGroupsHome({
@@ -16,7 +18,7 @@ class MyGroupsHome extends StatelessWidget {
     this.demoMode = false,
     this.busy = false,
     this.onToggleDemoGroups,
-    this.onIssueInvite,
+    this.groupAdmin,
   });
 
   /// `null` while the first snapshot is loading.
@@ -30,7 +32,8 @@ class MyGroupsHome extends StatelessWidget {
   final VoidCallback? onToggleDemoGroups;
 
   /// Issues an invite code for a group ID; null in demo mode.
-  final Future<String> Function(String groupId)? onIssueInvite;
+  /// Firestore operator actions (invites, join requests); null in demo mode.
+  final GroupAdmin? groupAdmin;
 
   void _add(BuildContext context) {
     showModalBottomSheet<void>(
@@ -100,7 +103,7 @@ class MyGroupsHome extends StatelessWidget {
               Text(
                 demoMode
                     ? '디자인 시연 모드 · 실제 계정에 연결되지 않았어요.'
-                    : '내 모임, 모임 만들기, 초대 코드 참여는 Firestore에 연결돼 있어요. 가입 승인은 아직 지원하지 않아요.',
+                    : '내 모임, 모임 만들기, 초대 코드 참여, 가입 승인은 Firestore에 연결돼 있어요.',
                 style: const TextStyle(color: teamixMuted),
               ),
               if (demoMode && onToggleDemoGroups != null)
@@ -160,17 +163,32 @@ class MyGroupsHome extends StatelessWidget {
     GroupSummary group,
     GroupCardPalette palette,
   ) {
+    final admin = group.isOperator ? groupAdmin : null;
     Navigator.of(context).push<void>(
       MaterialPageRoute<void>(
-        builder: (_) =>
-            GroupHome(
-              groupName: group.name,
-              isOperator: group.isOperator,
-              palette: palette,
-              onIssueInvite: onIssueInvite == null || !group.isOperator
-                  ? null
-                  : () => onIssueInvite!(group.groupId),
-            ),
+        builder: (home) => GroupHome(
+          groupName: group.name,
+          isOperator: group.isOperator,
+          palette: palette,
+          onIssueInvite: admin == null
+              ? null
+              : () => admin.issueInvitation(group.groupId),
+          onOpenJoinRequests: admin == null
+              ? null
+              : () => Navigator.of(home).push<void>(
+                  MaterialPageRoute<void>(
+                    builder: (_) => JoinRequestsScreen(
+                      groupName: group.name,
+                      requests: admin.joinRequests(group.groupId),
+                      onDecide: (request, approve) => admin.decideJoin(
+                        group.groupId,
+                        request.userId,
+                        approve: approve,
+                      ),
+                    ),
+                  ),
+                ),
+        ),
       ),
     );
   }

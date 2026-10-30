@@ -182,8 +182,50 @@ test('모임 만들기: 정해진 필드와 값만 허용한다', async () => {
 test('멤버십은 클라이언트가 만들거나 역할을 올릴 수 없다', async () => {
   await assertFails(setDoc(ref(db('outsider'), 'memberships/g_outsider'), membership('outsider', 'member', 'pending')));
   await assertFails(updateDoc(ref(db('member'), 'memberships/g_member'), { role: 'admin' }));
+  // A decision must also stamp updatedAt with the server time.
   await assertFails(updateDoc(ref(db('admin'), 'memberships/g_applicant'), { status: 'approved' }));
   await assertFails(deleteDoc(ref(db('member'), 'memberships/g_member')));
+});
+
+const decide = (uid, target, status, extra = {}) =>
+  updateDoc(ref(db(uid), `memberships/g_${target}`), { status, updatedAt: serverTimestamp(), ...extra });
+
+test('가입 승인: 운영진이 대기 요청을 승인하면 정식 회원이 된다', async () => {
+  await assertFails(getDoc(ref(db('applicant'), 'groups/g')));
+  await assertSucceeds(decide('admin', 'applicant', 'approved'));
+  await assertSucceeds(getDoc(ref(db('applicant'), 'groups/g')));
+  await assertSucceeds(getDoc(ref(db('applicant'), 'activities/a')));
+});
+
+test('가입 거절: 운영진이 거절하면 모임을 계속 볼 수 없다', async () => {
+  await assertSucceeds(decide('admin', 'applicant', 'rejected'));
+  await assertFails(getDoc(ref(db('applicant'), 'groups/g')));
+  // Already decided: no second decision.
+  await assertFails(decide('admin', 'applicant', 'approved'));
+});
+
+test('가입 결정: 운영진이 아니거나 대기가 아니거나 다른 값을 바꾸면 거절된다', async () => {
+  await assertFails(decide('member', 'applicant', 'approved'));
+  await assertFails(decide('applicant', 'applicant', 'approved'));
+  await assertFails(decide('outsider', 'applicant', 'approved'));
+  await assertFails(decide('admin', 'applicant', 'left'));
+  await assertFails(decide('admin', 'applicant', 'approved', { role: 'admin' }));
+  await assertFails(decide('admin', 'applicant', 'approved', { displayName: '바뀐 이름' }));
+  await assertFails(decide('admin', 'applicant', 'approved', { updatedAt: old }));
+  await assertFails(decide('admin', 'rejected', 'approved'));
+  await assertFails(decide('admin', 'member', 'rejected'));
+  // An admin of another group can't decide here.
+  await env.withSecurityRulesDisabled((c) => setDoc(ref(c.firestore(), 'memberships/h_outsider'),
+    membership('outsider', 'admin', 'approved', 'h')));
+  await assertFails(decide('outsider', 'applicant', 'approved'));
+});
+
+test('가입 요청 목록: 운영진만 모임의 대기 요청을 조회한다', async () => {
+  const pending = (uid) => query(collection(db(uid), 'memberships'), where('groupId', '==', 'g'),
+    where('status', '==', 'pending'), orderBy('createdAt'));
+  assert.equal((await assertSucceeds(getDocs(pending('admin')))).size, 1);
+  await assertFails(getDocs(pending('member')));
+  await assertFails(getDocs(pending('applicant')));
 });
 
 const inSixDays = () => Timestamp.fromMillis(Date.now() + 6 * 864e5);

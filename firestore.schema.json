@@ -34,7 +34,7 @@
       "createdAt": "timestamp",
       "updatedAt": "timestamp"
     },
-    "notes": "Authoritative per-group role. Server creates/approves; no self escalation. No private email or survey answers."
+    "notes": "Authoritative per-group role. Created by the group-creation batch or an invite-code join request (pending); an admin moves pending to approved/rejected. No self escalation. No private email or survey answers."
   },
   "invitations": {
     "path": "invitations/{code}",

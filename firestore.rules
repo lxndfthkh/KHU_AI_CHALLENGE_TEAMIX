@@ -81,6 +81,14 @@ service cloud.firestore {
         && d.createdAt == request.time && d.updatedAt == request.time
         && d.invitationId is string && liveInvitation(d.invitationId, d.groupId);
     }
+    // approveJoin / rejectJoin without a server: a group admin moves a pending
+    // request to approved or rejected, touching nothing but status/updatedAt.
+    function validJoinDecision() {
+      return admin(resource.data.groupId) && resource.data.status == 'pending'
+        && request.resource.data.status in ['approved', 'rejected']
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'updatedAt'])
+        && request.resource.data.updatedAt == request.time;
+    }
     match /groups/{gid} {
       allow read: if member(gid);
       allow create: if signedIn() && !gid.matches('.*_.*') && validNewGroup(request.resource.data)
@@ -92,7 +100,8 @@ service cloud.firestore {
         || (member(resource.data.groupId) && resource.data.status == 'approved'));
       allow create: if signedIn() && (validCreatorMembership(id, request.resource.data)
         || validJoinRequest(id, request.resource.data));
-      allow update, delete: if false;
+      allow update: if signedIn() && validJoinDecision();
+      allow delete: if false;
     }
     match /invitations/{code} {
       allow get: if signedIn() && resource.data.active == true && resource.data.expiresAt > request.time;
