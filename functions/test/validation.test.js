@@ -21,6 +21,13 @@ test('activity accepted; enabledQuestionIds follow question order, default prior
   assert.equal(v.questions[4].required,false);
   assert.deepEqual(v.matching.requiredRoles,[]);
 });
+test('activity type: the four learning types, optional for older clients',()=>{
+  assert.deepEqual(V.ACTIVITY_TYPES,['study','project','social','other']);
+  for(const type of V.ACTIVITY_TYPES)assert.equal(V.activity({...input(),type}).type,type);
+  assert.equal(V.activity(input()).type,null);
+  assert.equal(V.activity({...input(),type:null}).type,null);
+  for(const type of ['hobby','STUDY','',1])assert.throws(()=>V.activity({...input(),type}),/activity type/);
+});
 test('criterion must match question type',()=>{const d=input();d.matching.questionCriteria={time:'role'};assert.throws(()=>V.activity(d),/role needs a single/);});
 test('one question per criterion',()=>{const d=input();d.matching.questionCriteria={time:'time',topic:'time'};assert.throws(()=>V.activity(d));});
 test('matching question must be required',()=>{const d=input();d.matching.questionCriteria={mbti:'role'};assert.throws(()=>V.activity(d),/required/);});

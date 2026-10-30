@@ -18,7 +18,7 @@ async function createActivity(db,uid,d){
     await requireMember(tx,db,g,uid,true);
     const group=await tx.get(db.doc(`groups/${g}`));
     if(!group.exists||group.data().status!=='active')fail('not-found','모임을 찾을 수 없어요');
-    tx.create(ref,{groupId:g,title:value.title,description:value.description,createdBy:uid,
+    tx.create(ref,{groupId:g,title:value.title,description:value.description,type:value.type,createdBy:uid,
       themeColor:V.color(d.themeColor,group.data().themeColor),capacity:value.capacity,targetTeamSize:value.targetTeamSize,
       deadlineAt:Timestamp.fromMillis(value.deadlineAt),status:'recruiting',participantCount:0,questionsLockedAt:null,
       publishedVersion:null,createdAt:now(),updatedAt:now()});

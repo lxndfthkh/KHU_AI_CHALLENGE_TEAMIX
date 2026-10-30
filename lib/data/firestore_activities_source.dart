@@ -28,11 +28,13 @@ class ActivityRecord {
     'active' => '활동 중', 'ended' => '활동 종료',
     'cancelled' => '활동 취소', _ => '상태 확인 필요',
   };
-  String get typeLabel => switch (type) {
-    'study' => '스터디', 'project' => '프로젝트',
-    'social' => '친목', _ => '소모임',
-  };
+  String get typeLabel => activityTypeLabels[type] ?? '소모임';
 }
+
+/// Activity types, same keys as algorithm/learning/train.py TYPES.
+const activityTypeLabels = {
+  'study': '스터디', 'project': '프로젝트', 'social': '친목', 'other': '기타',
+};
 
 abstract class ActivitiesSource {
   Stream<List<ActivityRecord>> watchActivities(String groupId);

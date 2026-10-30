@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../data/firestore_activities_source.dart';
 import '../models/activity.dart';
 import '../theme.dart';
 import 'group_card_palette.dart';
@@ -45,6 +46,7 @@ class _CreateActivityScreenState extends State<CreateActivityScreen> {
   final _teamSize = TextEditingController(text: '4');
   late DateTime _deadline;
   String _method = 'balanced';
+  String? _type;
   bool _commonTime = false;
   bool _busy = false;
 
@@ -114,6 +116,11 @@ class _CreateActivityScreenState extends State<CreateActivityScreen> {
     final title = _title.text.trim();
     final capacity = int.tryParse(_capacity.text.trim());
     final teamSize = int.tryParse(_teamSize.text.trim());
+    final type = _type;
+    if (type == null) {
+      _toast('소모임 유형을 골라 주세요.');
+      return null;
+    }
     if (title.isEmpty || title.length > 120) {
       _toast('소모임 이름을 1~120자로 입력해 주세요.');
       return null;
@@ -175,6 +182,7 @@ class _CreateActivityScreenState extends State<CreateActivityScreen> {
     final commonTime = _commonTime && criteria.containsKey('time');
     return NewActivity(
       title: title,
+      type: type,
       description: _description.text,
       capacity: capacity,
       targetTeamSize: teamSize,
@@ -285,6 +293,20 @@ class _CreateActivityScreenState extends State<CreateActivityScreen> {
             _section('기본 정보', [
               _field('소모임 이름 *', _title, key: const ValueKey('activity-title')),
               _field('소개', _description, lines: 3),
+              const Text('유형 *', style: TextStyle(fontSize: 12)),
+              const SizedBox(height: 6),
+              Wrap(
+                spacing: 8,
+                children: [
+                  for (final MapEntry(key: key, value: label)
+                      in activityTypeLabels.entries)
+                    ChoiceChip(
+                      label: Text(label),
+                      selected: _type == key,
+                      onSelected: (_) => setState(() => _type = key),
+                    ),
+                ],
+              ),
             ]),
             _section('모집 설정', [
               Row(

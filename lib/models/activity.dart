@@ -71,6 +71,7 @@ class Registration {
 class NewActivity {
   const NewActivity({
     required this.title,
+    required this.type,
     this.description = '',
     required this.capacity,
     required this.targetTeamSize,
@@ -82,6 +83,10 @@ class NewActivity {
   });
 
   final String title;
+
+  /// study | project | social | other (activityTypeLabels); a learning
+  /// feature, so the operator always picks one.
+  final String type;
   final String description;
   final int capacity;
   final int targetTeamSize;
@@ -97,6 +102,7 @@ class NewActivity {
 
   Map<String, Object> toJson() => {
     'title': title.trim(),
+    'type': type,
     'description': description.trim(),
     'capacity': capacity,
     'targetTeamSize': targetTeamSize,
