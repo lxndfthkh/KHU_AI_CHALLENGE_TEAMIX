@@ -18,6 +18,7 @@ this module is the only place that knows main's storage layout:
 
 settings/matching engine fields, added next to main's method/enabledQuestionIds:
   questionCriteria {qid: role|time|experience|interest}, priority [criteria..., 'size'],
+  traits [{id, label, items: [{questionId, reverse}]}] (personality axes; scale questions),
   requireCommonTime, requiredRoles [{teamId, optionId, minimum}],
   teamIds, teamCapacities {teamId: int|null}, capacityInitialized, settingsVersion,
   learningEnabled (default true; per-activity switch for learned correction factors).
@@ -69,6 +70,19 @@ def build_state(g, a, docs):
         questions[qid] = {'id': qid, 'key': key, 'questionVersion': 1, 'scale': scale}
     if len({q['key'] for q in questions.values()}) != len(questions):
         raise Invalid('같은 편성 기준에 질문이 두 개 연결되어 있습니다')
+    traits, used = [], set(questions)
+    for t in settings.get('traits') or []:
+        items = []
+        for item in t.get('items', []):
+            qid = item.get('questionId')
+            q = docs['questions'].get(qid)
+            if q is None or not q.get('enabled', True) or q.get('type') != 'scale' or qid in used:
+                raise Invalid('성향 축 질문 설정을 확인해 주세요')
+            used.add(qid)
+            items.append({'questionId': qid, 'reverse': item.get('reverse') is True})
+        if not items:
+            raise Invalid('성향 축 질문 설정을 확인해 주세요')
+        traits.append({'id': t.get('id'), 'label': t.get('label') or t.get('id'), 'items': items})
     applications = {uid: {'status': 'applied' if r.get('status') == 'submitted' else r.get('status'),
                           'answerVersion': r.get('updatedAt'),
                           'answers': {qid: {'questionVersion': 1, 'value': v} for qid, v in (r.get('answers') or {}).items()}}
@@ -78,7 +92,8 @@ def build_state(g, a, docs):
     caps = settings.get('teamCapacities') or {}
     if set(caps) - set(tids):
         raise Invalid('삭제된 팀 정원을 제거해 주세요')
-    priority = settings.get('priority') or [q['key'] for q in questions.values()] + ['size']
+    priority = settings.get('priority') or ([q['key'] for q in questions.values()] +
+                                            (['personality'] if traits else []) + ['size'])
     extra = [{'type': 'commonTime'}] if settings.get('requireCommonTime') else []
     extra += [{'type': 'requiredRole', 'teamId': r['teamId'], 'role': r['optionId'], 'minimum': r['minimum']}
               for r in settings.get('requiredRoles', [])]
@@ -104,7 +119,7 @@ def build_state(g, a, docs):
     config = docs.get('learning') or {}
     learning = {'enabled': settings.get('learningEnabled', True) is not False,
                 'modelId': config.get('activeModelId'), 'b': config.get('b')}
-    return {'activity': activity, 'members': members, 'questions': questions, 'applications': applications,
+    return {'activity': activity, 'members': members, 'questions': questions, 'traits': traits, 'applications': applications,
             'draft': draft_from_doc(docs.get('draft') or {}), 'meta': {}, 'preferences': preferences,
             'published': published, 'publishedMeta': {'seq': version or 0}, 'notified': notified, 'learning': learning}
 
@@ -150,7 +165,8 @@ def settings_doc(patch, state):
         s['method'] = patch['formationMode']
     if 'criteria' in patch:
         order = [c['key'] for c in sorted(patch['criteria'], key=lambda c: c['priority'])]
-        if {k for k in order if k != 'size'} != {q['key'] for q in state['questions'].values()}:
+        keys = {q['key'] for q in state['questions'].values()} | ({'personality'} if state.get('traits') else set())
+        if {k for k in order if k != 'size'} != keys:
             raise Invalid('편성 기준 질문은 소모임을 만들 때만 정할 수 있습니다')
         s['priority'] = order
     if 'extraRequirements' in patch:
