@@ -82,6 +82,14 @@ class PersonalitySnapshot(unittest.TestCase):
         self.assertEqual(u1['answers']['personality'], {'ext': 5 + (6 - 2), 'lead': 2})
         self.assertIn(solve(raw_input)['status'], ('OPTIMAL', 'FEASIBLE'))
 
+    def test_active_model_factors_are_limited_to_used_criteria(self):
+        docs = self.docs()
+        docs['learning'] = {'activeModelId': 'm1',
+                            'b': {'time': 1.2, 'role': 0.8, 'experience': 1.0, 'interest': 1.1, 'size': 1.0}}
+        raw_input = snapshot(build_state('g', 'a', docs), {'kind': 'initial'})
+        self.assertEqual(raw_input['weightFactors'], {'role': 0.8, 'size': 1.0})
+        self.assertIn(solve(raw_input)['status'], ('OPTIMAL', 'FEASIBLE'))
+
     def test_trait_question_cannot_be_a_choice_question(self):
         docs = self.docs(); docs['settings']['traits'][1]['items'] = [{'questionId': 'qrole'}]
         with self.assertRaises(Exception):
