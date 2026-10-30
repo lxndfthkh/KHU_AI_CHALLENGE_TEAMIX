@@ -33,6 +33,8 @@ class _LearningScreenState extends State<LearningScreen> {
   LearningStatus? _status;
   String? _error;
   String? _working;
+  CompareTarget? _target;
+  FormationCompare? _compare;
 
   @override
   void initState() {
@@ -67,6 +69,11 @@ class _LearningScreenState extends State<LearningScreen> {
   }
 
   Future<void> _train() => _run('학습', () => _load(widget.admin.train));
+
+  Future<void> _runCompare(CompareTarget target) => _run('비교', () async {
+    final result = await widget.admin.compare(target);
+    if (mounted) setState(() => _compare = result);
+  });
 
   Future<void> _apply(String modelId) => _run('적용', () async {
     await widget.admin.apply(modelId);
@@ -255,6 +262,128 @@ class _LearningScreenState extends State<LearningScreen> {
     );
   }
 
+  /// Teams side by side; a learned team not formed by default is highlighted.
+  Widget _teams(String title, List<CompareTeam> teams, {Set<String>? same}) =>
+      Expanded(
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              title,
+              style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w800),
+            ),
+            const SizedBox(height: 6),
+            for (final (i, t) in teams.indexed)
+              Container(
+                width: double.infinity,
+                margin: const EdgeInsets.only(bottom: 6),
+                padding: const EdgeInsets.all(8),
+                decoration: BoxDecoration(
+                  color: same == null || same.contains(t.members.join())
+                      ? teamixBackground
+                      : butter,
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      '팀 ${i + 1} · ${t.members.join(', ')}',
+                      style: const TextStyle(fontSize: 11, color: ink),
+                    ),
+                    Text(
+                      t.commonTimes.isEmpty
+                          ? '전원 공통 시간 없음'
+                          : '공통 시간 ${t.commonTimes.join(', ')}',
+                      style: const TextStyle(fontSize: 10, color: teamixMuted),
+                    ),
+                  ],
+                ),
+              ),
+          ],
+        ),
+      );
+
+  Widget _comparison(LearningStatus s) {
+    final c = _compare;
+    final target = _target ?? s.targets.firstOrNull;
+    return _card(
+      Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          _title('편성 비교 · 기본값 vs 학습 보정'),
+          const Text(
+            '같은 신청자를 기본값과 최근 학습 결과로 각각 편성해 봐요. 저장되지는 않아요.',
+            style: TextStyle(fontSize: 12, color: teamixMuted),
+          ),
+          const SizedBox(height: 8),
+          if (s.targets.isEmpty)
+            const Text(
+              '신청이 마감된 소모임이 없어요.',
+              style: TextStyle(fontSize: 12, color: teamixMuted),
+            )
+          else ...[
+            DropdownButton<CompareTarget>(
+              key: const ValueKey('compare-target'),
+              isExpanded: true,
+              value: target,
+              items: [
+                for (final t in s.targets)
+                  DropdownMenuItem(
+                    value: t,
+                    child: Text(
+                      t.groupName.isEmpty
+                          ? t.title
+                          : '${t.groupName} · ${t.title}',
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ),
+              ],
+              onChanged: (t) => setState(() {
+                _target = t;
+                _compare = null;
+              }),
+            ),
+            OutlinedButton(
+              onPressed: _working == null && target != null
+                  ? () => _runCompare(target)
+                  : null,
+              child: Text(_working == '비교' ? '편성하는 중…' : '두 방식으로 편성해 보기'),
+            ),
+          ],
+          if (c != null) ...[
+            const SizedBox(height: 12),
+            if (c.b.isNotEmpty)
+              Text(
+                '학습 보정: ${[for (final e in c.b.entries)
+                  if (_criteria[e.key] != null) '${_criteria[e.key]} ${e.value.toStringAsFixed(2)}배'].join(' · ')}',
+                style: const TextStyle(fontSize: 11, color: teamixMuted),
+              ),
+            const SizedBox(height: 8),
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                _teams('기본값', c.before),
+                const SizedBox(width: 10),
+                _teams(
+                  '학습 보정 후',
+                  c.after,
+                  same: {for (final t in c.before) t.members.join()},
+                ),
+              ],
+            ),
+            Text(
+              '노란 팀은 학습 보정으로 새로 묶인 팀이에요 · '
+              '${c.after.where((t) => !{for (final b in c.before) b.members.join()}.contains(t.members.join())).length}팀 바뀜',
+              key: const ValueKey('compare-changed'),
+              style: const TextStyle(fontSize: 11, color: teamixMuted),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
   static String _date(DateTime d) =>
       '${d.month}월 ${d.day}일 ${d.hour}:${d.minute.toString().padLeft(2, '0')}';
 
@@ -304,6 +433,7 @@ class _LearningScreenState extends State<LearningScreen> {
                     ),
                     const SizedBox(height: 12),
                     _latest(s),
+                    _comparison(s),
                   ],
                 ),
         ),

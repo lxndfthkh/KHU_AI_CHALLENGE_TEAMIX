@@ -65,17 +65,20 @@ def create_app():
         raise HTTPException(410,'/generateDraft를 사용해 주세요. 서버가 입력을 조회합니다')
     # Service admin only (Auth custom claim admin: true), like functions/src/models.js.
     def learning(action):
-        def endpoint(token=Depends(current_token),db=Depends(get_db)):
+        def endpoint(body:dict|None=None,token=Depends(current_token),db=Depends(get_db)):
             try:
                 L.require_admin(token)
-                return action(db)
+                return action(db,body or {})
             except L.NotAdmin: raise HTTPException(403,'서비스 관리자만 할 수 있어요') from None
+            except Missing: raise HTTPException(404,'활동을 찾을 수 없습니다') from None
+            except Invalid as e: raise HTTPException(409,str(e)) from None
             except Exception:
                 logging.error('Learning request failed')
                 raise HTTPException(500,'처리 중 오류가 발생했습니다') from None
         return endpoint
     app.post('/learning/status')(learning(L.status))
     app.post('/learning/train')(learning(L.train_now))
+    app.post('/learning/compare')(learning(L.compare))
     @app.get('/health')
     def health(): return {'ok':True}
     return app

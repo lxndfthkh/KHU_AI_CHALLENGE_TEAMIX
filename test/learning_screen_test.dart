@@ -42,6 +42,25 @@ class FakeLearning implements LearningAdmin {
   }
 
   @override
+  Future<FormationCompare> compare(CompareTarget target) async {
+    calls.add('compare ${target.activityId}');
+    List<CompareTeam> teams(List<List<int>> g) => [
+      for (final t in g) CompareTeam([for (final i in t) '$i'], const ['월 저녁']),
+    ];
+    return FormationCompare(
+      before: teams([
+        [1, 2, 3, 4],
+        [5, 6, 7, 8],
+      ]),
+      after: teams([
+        [1, 2, 5, 8],
+        [3, 4, 6, 7],
+      ]),
+      b: const {'time': 1.52, 'interest': 0.72},
+    );
+  }
+
+  @override
   Future<void> apply(String modelId) async {
     calls.add('apply $modelId');
     current = LearningStatus(
@@ -93,5 +112,38 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text('기본값 · 모든 기준 1.0배'), findsOneWidget);
     expect(admin.calls, ['train', 'apply m1', 'reset']);
+  });
+
+  testWidgets('편성 비교: 마감된 소모임을 두 방식으로 편성해 바뀐 팀을 보여준다', (tester) async {
+    tester.view.physicalSize = const Size(900, 2800);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
+    final admin = FakeLearning()
+      ..current = LearningStatus.fromJson({
+        'targets': [
+          {
+            'groupId': 'g1',
+            'activityId': 'a1',
+            'title': '데모 소모임',
+            'groupName': '데모 모임',
+          },
+        ],
+      });
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: buildTeamixTheme(),
+        home: LearningScreen(admin: admin),
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(find.text('데모 모임 · 데모 소모임'), findsOneWidget);
+
+    await tester.tap(find.text('두 방식으로 편성해 보기'));
+    await tester.pumpAndSettle();
+    expect(admin.calls, ['compare a1']);
+    expect(find.text('팀 1 · 1, 2, 3, 4'), findsOneWidget);
+    expect(find.text('팀 1 · 1, 2, 5, 8'), findsOneWidget);
+    expect(find.textContaining('2팀 바뀜'), findsOneWidget);
+    expect(find.text('학습 보정: 시간 1.52배 · 관심사 0.72배'), findsOneWidget);
   });
 }
