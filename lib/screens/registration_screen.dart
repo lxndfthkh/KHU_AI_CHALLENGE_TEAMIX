@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../data/firestore_activities_source.dart';
 import '../models/activity.dart';
 import '../theme.dart';
 import 'group_card_palette.dart';
@@ -16,7 +17,7 @@ class RegistrationScreen extends StatefulWidget {
     this.palette = GroupCardPalette.defaultJoined,
   });
 
-  final Activity activity;
+  final ActivityRecord activity;
   final List<ActivityQuestion> questions;
   final Future<void> Function(Map<String, Object> answers) onSubmit;
   final Map<String, Object?> initialAnswers;

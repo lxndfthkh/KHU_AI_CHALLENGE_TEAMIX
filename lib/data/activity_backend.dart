@@ -4,13 +4,11 @@ import '../models/activity.dart';
 import '../models/formation.dart';
 import 'feedback_learning_api.dart';
 
-/// Subgroup (activity) data for the group home and its screens. Reads come
-/// straight from Firestore under the rules; writes go through the callable
+/// Subgroup questions, registrations and teams for the group home screens
+/// (activity documents themselves come from ActivitiesSource). Reads go
+/// straight to Firestore under the rules; writes go through the callable
 /// commands in functions/ because the rules refuse them. Null in demo mode.
 abstract interface class ActivityBackend {
-  Stream<List<Activity>> activities(String groupId);
-  Stream<Activity?> activity(String activityId);
-
   /// The caller's published team (`teamViews/{a}_{uid}`), null before.
   Stream<MyTeam?> myTeam(String groupId, String activityId);
   Future<List<ActivityQuestion>> questions(String activityId);
@@ -37,25 +35,6 @@ class FirebaseActivityBackend implements ActivityBackend {
 
   /// Created on the first write so reads work without the callable client.
   late final FeedbackLearningApi _api = _injectedApi ?? FeedbackLearningApi();
-
-  /// Open and running subgroups; matches the (groupId, status, createdAt)
-  /// index and the member-only read rule.
-  @override
-  Stream<List<Activity>> activities(String groupId) => _db
-      .collection('activities')
-      .where('groupId', isEqualTo: groupId)
-      .where('status', whereIn: ['recruiting', 'closed', 'active'])
-      .orderBy('createdAt', descending: true)
-      .snapshots()
-      .map(
-        (s) => [for (final d in s.docs) Activity.fromFirestore(d.id, d.data())],
-      );
-
-  @override
-  Stream<Activity?> activity(String activityId) => _db
-      .doc('activities/$activityId')
-      .snapshots()
-      .map((d) => d.exists ? Activity.fromFirestore(d.id, d.data()!) : null);
 
   /// A query for the same reason as [myRegistration]; groupId and activityId
   /// let the rules check membership and participation.

@@ -5,6 +5,7 @@ import 'package:fake_cloud_firestore/fake_cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:teamix/data/activity_backend.dart';
+import 'package:teamix/data/firestore_activities_source.dart';
 import 'package:teamix/models/activity.dart';
 import 'package:teamix/models/formation.dart';
 import 'package:teamix/screens/create_activity_screen.dart';
@@ -29,32 +30,36 @@ const sampleQuestions = [
   ActivityQuestion(id: 'experience', label: '경험 수준', type: 'scale', order: 2),
 ];
 
-final sampleActivity = Activity(
+final sampleActivity = ActivityRecord(
   id: 'a1',
   groupId: 'g1',
   title: '캠퍼스 해커톤',
   description: '함께 만들어요',
   capacity: 20,
   targetTeamSize: 4,
-  deadline: DateTime(2030, 1, 1),
+  deadlineAt: DateTime(2030, 1, 1),
   status: 'recruiting',
   participantCount: 6,
 );
 
+/// Activity documents for the home and detail (PR #18's source).
+class FakeActivities implements ActivitiesSource {
+  final list = StreamController<List<ActivityRecord>>.broadcast();
+  final detail = StreamController<ActivityRecord?>.broadcast();
+  @override
+  Stream<List<ActivityRecord>> watchActivities(String groupId) => list.stream;
+  @override
+  Stream<ActivityRecord?> watchActivity(String activityId) => detail.stream;
+}
+
 /// In-memory backend recording what the screens send.
 class FakeBackend implements ActivityBackend {
-  final list = StreamController<List<Activity>>.broadcast();
   final registration = StreamController<Registration?>.broadcast();
   final created = <(String, NewActivity)>[];
   final submitted = <Map<String, Object>>[];
   final updated = <Map<String, Object>>[];
 
   final team = StreamController<MyTeam?>.broadcast();
-  @override
-  Stream<List<Activity>> activities(String groupId) => list.stream;
-  @override
-  Stream<Activity?> activity(String id) => Stream.value(activity_);
-  Activity? activity_ = sampleActivity;
   @override
   Stream<MyTeam?> myTeam(String groupId, String activityId) => team.stream;
   @override
@@ -83,10 +88,11 @@ class FakeBackend implements ActivityBackend {
 Widget app(Widget home) => MaterialApp(theme: buildTeamixTheme(), home: home);
 
 void main() {
-  test('Activity는 createActivity가 쓴 문서를 읽는다', () {
-    final a = Activity.fromFirestore('a1', {
+  test('ActivityRecord는 공개 버전과 모집 여부를 읽는다', () {
+    final a = ActivityRecord.fromFirestore('a1', {
       'groupId': 'g1',
       'title': '해커톤',
+      'description': '',
       'capacity': 10,
       'targetTeamSize': 3,
       'deadlineAt': Timestamp.fromDate(DateTime(2030)),
@@ -94,10 +100,9 @@ void main() {
       'participantCount': 7,
       'publishedVersion': 2,
     });
-    expect(a.estimatedTeamCount, 3);
     expect(a.published, isTrue);
-    expect(a.statusLabel, '팀 공개');
-    expect(a.deadline, DateTime(2030));
+    expect(a.recruiting, isFalse);
+    expect(a.publishedVersion, 2);
   });
 
   test('NewActivity는 functions의 createActivity 형식으로 보낸다', () {
@@ -162,11 +167,6 @@ void main() {
         'status': 'recruiting',
         'createdAt': Timestamp.now(),
       });
-    });
-
-    test('모임의 진행 중 소모임만 최신순으로', () async {
-      final list = await backend.activities('g1').first;
-      expect(list.map((a) => a.id), ['new', 'old']);
     });
 
     test('질문은 켜진 것만 순서대로', () async {
@@ -295,29 +295,30 @@ void main() {
     });
   });
 
-  testWidgets('모임 홈: 실제 소모임을 보여주고 신청까지 이어진다', (tester) async {
+  testWidgets('모임 홈: 실제 소모임 상세에서 신청까지 이어진다', (tester) async {
     final backend = FakeBackend();
+    final source = FakeActivities();
     await tester.pumpWidget(
       app(
         GroupHome(
           groupName: '경희 메이커스',
           isOperator: true,
           groupId: 'g1',
+          activitiesSource: source,
           activityBackend: backend,
         ),
       ),
     );
-    backend.list.add([sampleActivity]);
+    source.list.add([sampleActivity]);
     await tester.pump();
     expect(find.text('캠퍼스 해커톤'), findsOneWidget);
-    expect(find.text('6 / 20명 · 팀당 4명'), findsOneWidget);
-    expect(find.text('모집 중'), findsOneWidget);
 
     await tester.ensureVisible(find.text('소모임 상세보기 ↗'));
     await tester.tap(find.text('소모임 상세보기 ↗'));
-    await tester.pumpAndSettle();
-    backend.registration.add(null);
     await tester.pump();
+    source.detail.add(sampleActivity);
+    backend.registration.add(null);
+    await tester.pumpAndSettle();
     await tester.tap(find.text('참가 신청하기'));
     await tester.pumpAndSettle();
     expect(find.byType(RegistrationScreen), findsOneWidget);
@@ -342,19 +343,21 @@ void main() {
 
   testWidgets('모임 홈: 소모임 창설은 실제 생성 화면을 연다', (tester) async {
     final backend = FakeBackend();
+    final source = FakeActivities();
     await tester.pumpWidget(
       app(
         GroupHome(
           groupName: '경희 메이커스',
           isOperator: true,
           groupId: 'g1',
+          activitiesSource: source,
           activityBackend: backend,
         ),
       ),
     );
-    backend.list.add(const []);
+    source.list.add(const []);
     await tester.pump();
-    expect(find.text('아직 소모임이 없어요. 소모임 창설로 첫 활동을 열어 보세요.'), findsOneWidget);
+    expect(find.text('등록된 소모임이 없어요.'), findsOneWidget);
     await tester.tap(find.text('소모임 창설'));
     await tester.pumpAndSettle();
     expect(find.byType(CreateActivityScreen), findsOneWidget);

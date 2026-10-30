@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 
 import '../data/formation_backend.dart';
+import '../data/firestore_activities_source.dart';
 import '../models/activity.dart';
 import '../models/formation.dart';
 import '../theme.dart';
@@ -27,7 +28,7 @@ class FormationScreen extends StatefulWidget {
   });
 
   final String groupId;
-  final Stream<Activity?> activity;
+  final Stream<ActivityRecord?> activity;
   final FormationBackend backend;
 
   /// Used to turn option IDs in team summaries into labels.
@@ -40,8 +41,8 @@ class FormationScreen extends StatefulWidget {
 
 class _FormationScreenState extends State<FormationScreen> {
   late final Stream<FormationDraft?> _draft;
-  late final StreamSubscription<Activity?> _activitySub;
-  Activity? _activity;
+  late final StreamSubscription<ActivityRecord?> _activitySub;
+  ActivityRecord? _activity;
   Map<String, String> _names = const {};
   List<String> _precheck = const [];
   bool _busy = false;
@@ -254,7 +255,7 @@ class _FormationScreenState extends State<FormationScreen> {
     ],
   );
 
-  List<Widget> _body(Activity a, FormationDraft? draft) {
+  List<Widget> _body(ActivityRecord a, FormationDraft? draft) {
     if (a.recruiting) {
       return [
         _step(

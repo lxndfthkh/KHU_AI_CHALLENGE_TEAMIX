@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:teamix/data/firestore_activities_source.dart';
 import 'package:teamix/data/formation_backend.dart';
 import 'package:teamix/models/activity.dart';
 import 'package:teamix/models/formation.dart';
@@ -24,10 +25,12 @@ const questions = [
   ),
 ];
 
-Activity activityIn(String status, {int? published}) => Activity(
+ActivityRecord activityIn(String status, {int? published}) => ActivityRecord(
   id: 'a1',
   groupId: 'g1',
   title: '해커톤',
+  description: '',
+  deadlineAt: DateTime(2030),
   capacity: 10,
   targetTeamSize: 2,
   status: status,
@@ -118,7 +121,7 @@ class FakeFormation implements FormationBackend {
   }
 }
 
-Widget screen(FakeFormation backend, Activity activity) => MaterialApp(
+Widget screen(FakeFormation backend, ActivityRecord activity) => MaterialApp(
   theme: buildTeamixTheme(),
   home: FormationScreen(
     groupId: 'g1',
