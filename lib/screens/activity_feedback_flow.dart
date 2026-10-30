@@ -4,7 +4,6 @@ import '../data/activity_backend.dart';
 import '../data/firestore_activities_source.dart';
 import '../theme.dart';
 import 'feedback_screen.dart';
-import 'feedback_summary_screen.dart';
 import 'formation_screen.dart' show teamLabel;
 import 'group_card_palette.dart';
 
@@ -211,31 +210,6 @@ class _ActivityLifecyclePanelState extends State<ActivityLifecyclePanel> {
     }
   }
 
-  Future<void> _summary() async {
-    final a = widget.activity;
-    final version = a.publishedVersion;
-    final teamIds = version == null
-        ? const <String>[]
-        : await widget.backend
-              .publishedTeamIds(a.id, version)
-              .catchError((_) => const <String>[]);
-    if (!mounted) return;
-    Navigator.of(context).push<void>(
-      MaterialPageRoute<void>(
-        builder: (_) => FeedbackSummaryScreen(
-          activityTitle: a.title,
-          summary: widget.backend.feedbackSummary(a.id),
-          teamIds: teamIds,
-          feedbackOpen: a.feedbackOpen,
-          palette: widget.palette,
-          onClose: a.feedbackOpen
-              ? () => widget.backend.closeFeedback(a.id)
-              : null,
-        ),
-      ),
-    );
-  }
-
   @override
   Widget build(BuildContext context) {
     final a = widget.activity;
@@ -262,9 +236,16 @@ class _ActivityLifecyclePanelState extends State<ActivityLifecyclePanel> {
               ),
         child: const Text('활동 종료하기'),
       ),
-      'ended' => OutlinedButton(
-        onPressed: _summary,
-        child: Text(a.feedbackOpen ? '후기 요약 · 마감' : '후기 요약 보기'),
+      'ended' when a.feedbackOpen => OutlinedButton(
+        onPressed: _busy
+            ? null
+            : () => _run(
+                '후기를 마감할까요?',
+                '마감하면 더 이상 후기를 받지 않아요. 마감하지 않아도 종료 7일 뒤 자동으로 마감돼요.',
+                () => widget.backend.closeFeedback(a.id),
+                '후기를 마감했어요.',
+              ),
+        child: const Text('후기 마감하기'),
       ),
       _ => null,
     };
