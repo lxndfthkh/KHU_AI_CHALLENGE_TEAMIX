@@ -9,7 +9,10 @@ import math
 import ortools
 from ortools.sat.python import cp_model as cp
 
-ENGINE_VERSION = 'formation-3.0.0'
+ENGINE_VERSION = 'formation-3.1.0'
+BASIC = ('time', 'role', 'experience', 'interest')
+PERSONALITY = 'personality'
+MAX_TRAITS, MAX_TRAIT_ITEMS = 4, 3
 VALID = {'OPTIMAL', 'FEASIBLE'}
 
 class Invalid(ValueError):
@@ -61,11 +64,22 @@ def prepare(raw):
     s['teams'] = sorted(teams, key=lambda t: t['id'])
     selected = s.get('selected_questions', [])
     priority = s.get('priority', [])
-    require(len(selected) == len(set(selected)) and set(selected) <= {'time','role','experience','interest'}, '잘못된 기준')
+    require(len(selected) == len(set(selected)) and set(selected) <= set(BASIC) | {PERSONALITY}, '잘못된 기준')
     require(len(priority) == len(set(priority)) and set(priority) == set(selected)|{'size'}, '우선순위 확인 필요')
     require(s.get('method') in ('balanced', 'similar'), '잘못된 편성 방식')
     cats = s.get('categories', {})
+    traits = s.get('traits', [])
+    if PERSONALITY in selected:
+        require(isinstance(traits, list) and 0 < len(traits) <= MAX_TRAITS, '성향 축 확인 필요')
+        require(all(isinstance(t, dict) and isinstance(t.get('id'), str) and t['id'] and
+                    type(t.get('size')) is int and 1 <= t['size'] <= MAX_TRAIT_ITEMS for t in traits), '성향 축 확인 필요')
+        require(len({t['id'] for t in traits}) == len(traits), '성향 축 중복')
+    else:
+        traits = []
+    s['traits'] = traits
     for q in selected:
+        if q == PERSONALITY:
+            continue
         if q != 'experience':
             require(isinstance(cats.get(q), list) and 0 < len(cats[q]) <= 50 and
                     all(isinstance(c, str) and c for c in cats[q]) and len(set(cats[q])) == len(cats[q]), '선택지 확인 필요')
@@ -74,6 +88,9 @@ def prepare(raw):
             v = p.get('answers', {}).get(q)
             if q == 'experience':
                 ok = type(v) is int and 1 <= v <= 5
+            elif q == PERSONALITY:
+                ok = isinstance(v, dict) and set(v) == {t['id'] for t in traits} and all(
+                    type(v[t['id']]) is int and t['size'] <= v[t['id']] <= 5*t['size'] for t in traits)
             elif q == 'role':
                 ok = isinstance(v, str) and v in cats[q]
             else:
@@ -171,6 +188,17 @@ def assess(s, assignment):
                 else:
                     loss = rounded(500*sum(abs(Fraction(a,sum(counts))-Fraction(b,sum(totals))) for a,b in zip(counts,totals)))
                 item['rolePreferences' if q == 'role' else 'interests'] = dict(zip(cats,counts))
+            elif q == PERSONALITY:
+                A = len(s['traits']); loss = 0; profile = {}
+                for t in s['traits']:
+                    tv = [v[t['id']] for v in vals]; k = t['size']
+                    if s['method'] == 'balanced':
+                        total = sum(p['answers'][q][t['id']] for p in people)
+                        loss += rounded(250*abs(Fraction(sum(tv),n)-Fraction(total,N)), k*A)
+                    else:
+                        loss += rounded(250*(max(tv)-min(tv)), k*A)
+                    profile[t['id']] = {'sum': sum(tv), 'items': k, 'respondents': n, 'mean': sum(tv)/(n*k)}
+                item['personality'] = profile
             elif q == 'time':
                 counts = {c:sum(c in v for v in vals) for c in s['categories'][q]}
                 item['commonTimes'] = [c for c,v in counts.items() if v == n]
@@ -247,7 +275,24 @@ def build(s, scoring=True, diagnostic=False):
         model.add_allowed_assignments([n,sz],[(a,rounded(1000*abs(Fraction(a)-Fraction(N,K))/d) if d else 0) for a in range(1,N+1)])
         loss={'size':sz}
         for q in s['selected_questions']:
-            if q in ('role','interest','time'):
+            if q == PERSONALITY:
+                A=len(s['traits']); parts=[]
+                for tr in s['traits']:
+                    k=tr['size']; vals={p['id']:p['answers'][q][tr['id']] for p in people}
+                    if s['method'] == 'balanced':
+                        tsum=var(0,5*k*N); model.add(tsum == sum(vals[i]*x[i,t] for i in ids))
+                        parts.append(rounded_var(250*absolute(tsum*N-sum(vals.values())*n),n*N*k*A))
+                    else:
+                        highs=[]; lows=[]
+                        for i in ids:
+                            h=var(0,5*k); l=var(1,5*k+1)
+                            model.add(h == vals[i]*x[i,t]); model.add(l == vals[i]*x[i,t]+(5*k+1)*(1-x[i,t]))
+                            highs.append(h); lows.append(l)
+                        hi=var(k,5*k); lo=var(k,5*k)
+                        model.add_max_equality(hi,highs); model.add_min_equality(lo,lows)
+                        parts.append(rounded_var(250*(hi-lo),k*A))
+                total_p=var(0,1000); model.add(total_p == sum(parts)); loss[q]=total_p
+            elif q in ('role','interest','time'):
                 cats=s['categories'][q]
                 counts=[]; totals=[]
                 for c in cats:

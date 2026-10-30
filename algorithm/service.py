@@ -59,8 +59,11 @@ def snapshot(s, body, include_private=True):
     a=s['activity']; draft=base_draft(s)
     criteria=sorted(a['criteria'],key=lambda c:c['priority'])
     selected=[c['key'] for c in criteria if c['key'] != 'size']
-    questions={q['key']:q for q in s['questions'].values() if q['key'] in selected}
-    require(set(questions) == set(selected),'질문 설정을 확인해 주세요')
+    traits=s.get('traits') or []
+    basic=[k for k in selected if k != 'personality']
+    questions={q['key']:q for q in s['questions'].values() if q['key'] in basic}
+    require(set(questions) == set(basic),'질문 설정을 확인해 주세요')
+    require(('personality' in selected) == bool(traits),'성향 축 설정을 확인해 주세요')
     participants=[]
     for uid,app in sorted(s['applications'].items()):
         if app.get('status') != 'applied' or s['members'].get(uid,{}).get('status') != 'active': continue
@@ -72,6 +75,16 @@ def snapshot(s, body, include_private=True):
             if key in ('time','interest') and isinstance(val,str): val=[val]
             if key == 'role' and isinstance(val,list) and len(val) == 1: val=val[0]
             answers[key]=val
+        if 'personality' in selected:
+            profile={}
+            for t in traits:
+                total=0
+                for item in t['items']:
+                    v=app.get('answers',{}).get(item['questionId'],{}).get('value')
+                    require(type(v) is int and 1 <= v <= 5,f'{uid}: 성향 응답이 필요합니다')
+                    total+=6-v if item['reverse'] else v
+                profile[t['id']]=total
+            answers['personality']=profile
         participants.append({'id':uid,'answers':answers})
     roles=[]; common=False
     for rule in a.get('extraRequirements',[]):
@@ -81,6 +94,7 @@ def snapshot(s, body, include_private=True):
     raw={'participants':participants,'teams':[{'id':t,'capacity':a['capacity'].get(t)} for t in a['teamIds']],
          'selected_questions':selected,'priority':[c['key'] for c in criteria], 'method':a['formationMode'],
          'categories':{k:q['scale'] for k,q in questions.items() if k != 'experience'},
+         'traits':[{'id':t['id'],'label':t['label'],'size':len(t['items'])} for t in traits],
          'published':s['published'],'draft':draft['assignments'],'locks':draft['locks'],
          'required_roles':roles,'require_common_time':common,'seed':body.get('seed',42),'limit':body.get('limit',10),
          'weightFactors':learning(s)['b'],
@@ -132,7 +146,7 @@ class FormationService:
                     if t not in cap: cap[t]=max(1,(n+len(tids)-1)//len(tids))
                 changed['capacity']=cap
                 criteria=changed.get('criteria',[])
-                require(isinstance(criteria,list) and 0 < len(criteria) <= 5,'기준 확인 필요')
+                require(isinstance(criteria,list) and 0 < len(criteria) <= 6,'기준 확인 필요')
                 require(sorted(c.get('priority',0) for c in criteria) == list(range(1,len(criteria)+1)),'우선순위 확인 필요')
                 probe={**s,'activity':changed}
                 dummy=snapshot(probe,{'kind':'republish'},False)
