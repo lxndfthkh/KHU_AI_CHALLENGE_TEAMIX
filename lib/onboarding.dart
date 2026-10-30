@@ -8,6 +8,7 @@ import 'data/formation_backend.dart';
 import 'data/firestore_group_writer.dart';
 import 'data/firestore_groups_source.dart';
 import 'data/firestore_invitations.dart';
+import 'data/firestore_notifications.dart';
 import 'data/firestore_pending_join.dart';
 import 'data/group_admin.dart';
 import 'data/group_repository.dart';
@@ -221,6 +222,14 @@ class _EntryScreenState extends State<EntryScreen> {
 
   ActivityBackend? activityBackend;
   String? activityBackendUid;
+
+  FirestoreNotifications? notifications;
+
+  /// One per signed-in user so the home bell keeps its subscription.
+  FirestoreNotifications notificationsFor(String uid) =>
+      notifications?.uid == uid
+      ? notifications!
+      : notifications = FirestoreNotifications(FirebaseFirestore.instance, uid);
 
   /// One per signed-in user so its HTTP client is reused across rebuilds.
   ActivityBackend? backendFor(String uid) {
@@ -439,6 +448,7 @@ class _EntryScreenState extends State<EntryScreen> {
       myGroupsUid = null;
       activityBackend = null;
       activityBackendUid = null;
+      notifications = null;
       formationBackend = null;
       clearInvite();
       // The next person on this device starts from empty fields.
@@ -709,6 +719,7 @@ class _EntryScreenState extends State<EntryScreen> {
             pendingJoins: uid == null
                 ? null
                 : FirestorePendingJoins(FirebaseFirestore.instance, uid),
+            notifications: uid == null ? null : notificationsFor(uid),
           );
 
       content = uid == null
