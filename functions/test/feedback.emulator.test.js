@@ -1,4 +1,4 @@
-// Stage 4-5 against the Firestore emulator (main schema), following 개발단계_가이드 4·5단계 통과 기준.
+// Stage 4 against the Firestore emulator (main schema), following 개발단계_가이드 4단계 통과 기준 (편성학습_v4: scores only).
 // Run from functions/: npm run test:emulator
 const {test,before,beforeEach,after}=require('node:test');
 const assert=require('node:assert/strict');
@@ -10,7 +10,6 @@ const {initializeTestEnvironment,assertFails,assertSucceeds}=require('@firebase/
 const {doc,getDoc}=require('firebase/firestore');
 const {CommandError}=require('../src/common');
 const A=require('../src/activity');
-const T=require('../src/tagging');
 
 const PROJECT=process.env.GCLOUD_PROJECT||'';
 const H=3600000;
@@ -70,22 +69,23 @@ test('4: ending records endedVersion/endedAt and asks only the ending version fo
 
 test('4: feedback links to the ending version even after a republish; membershipRatio is right',async()=>{
   await A.endActivity(db,'admin',{activityId:'a'});
-  const moved=await A.submitFeedback(db,'u2',{activityId:'a',scores:scores(),comment:'일정 맞추기가 힘들었어요'});
+  const moved=await A.submitFeedback(db,'u2',{activityId:'a',scores:scores()});
   assert.equal(moved.teamId,'team_2');
   assert.ok(Math.abs(moved.membershipRatio-0.4)<0.01,`ratio ${moved.membershipRatio}`);
   const stayed=await A.submitFeedback(db,'u0',{activityId:'a',scores:scores(),teamId:'team_2',teamVersion:1});
   assert.equal(stayed.teamId,'team_1');assert.equal(stayed.membershipRatio,1);
   const f=await get('feedback/a_u2');
-  assert.deepEqual([f.activityId,f.groupId,f.userId,f.teamId,f.teamVersion,f.rating,f.questionnaireVersion],['a','g','u2','team_2',2,4,'r1']);
-  assert.deepEqual(f.scores,scores());assert.equal(f.learningConsent,false);assert.equal(f.commentTags,null);
+  assert.deepEqual([f.activityId,f.groupId,f.userId,f.teamId,f.teamVersion,f.rating,f.questionnaireVersion],['a','g','u2','team_2',2,4,'r2']);
+  assert.deepEqual(f.scores,scores());assert.equal(f.learningConsent,false);
+  assert.ok(!('comment' in f)&&!('commentTags' in f));
 });
 
-test('4: only people in the ending version, valid scores, comment length, closed after closeFeedback',async()=>{
+test('4: only people in the ending version, valid scores, no free text, closed after closeFeedback',async()=>{
   await A.endActivity(db,'admin',{activityId:'a'});
   await db.doc('memberships/g_u9').set({groupId:'g',userId:'u9',displayName:'x',role:'member',status:'approved'});
   await rejects(A.submitFeedback(db,'u9',{activityId:'a',scores:scores()}),'permission-denied');
   await rejects(A.submitFeedback(db,'u0',{activityId:'a',scores:{overall:4}}),'invalid-argument');
-  await rejects(A.submitFeedback(db,'u0',{activityId:'a',scores:scores(),comment:'가'.repeat(1001)}),'invalid-argument');
+  await rejects(A.submitFeedback(db,'u0',{activityId:'a',scores:scores(),comment:'자유 서술'}),'invalid-argument');
   await A.submitFeedback(db,'u0',{activityId:'a',scores:scores(2)});
   await A.submitFeedback(db,'u0',{activityId:'a',scores:scores(5)});
   assert.equal((await get('feedback/a_u0')).rating,5);
@@ -108,12 +108,13 @@ test('4: learning consent copied at writing time; later changes apply to later w
 
 test('4: summary only for teams with 3+ respondents; officers cannot read individual feedback',async()=>{
   await A.endActivity(db,'admin',{activityId:'a'});
-  for(const u of ['u2','u3','u4'])await A.submitFeedback(db,u,{activityId:'a',scores:scores(u==='u2'?2:5),comment:'좋았어요'});
+  for(const u of ['u2','u3','u4'])await A.submitFeedback(db,u,{activityId:'a',scores:scores(u==='u2'?2:5)});
   await A.submitFeedback(db,'u0',{activityId:'a',scores:scores()});
   const s=await get('activities/a/feedbackSummary/current');
   assert.deepEqual(Object.keys(s.teams),['team_2']);
   assert.equal(s.teams.team_2.respondents,3);assert.equal(s.teams.team_2.averages.overall,4);
-  assert.ok(!JSON.stringify(s).includes('좋았어요')&&!JSON.stringify(s).includes('u2'));
+  assert.deepEqual(Object.keys(s.teams.team_2).sort(),['averages','respondents']);
+  assert.ok(!JSON.stringify(s).includes('u2'));
   const as=uid=>env.authenticatedContext(uid).firestore();
   await assertSucceeds(getDoc(doc(as('u2'),'feedback/a_u2')));
   await assertFails(getDoc(doc(as('admin'),'feedback/a_u2')));
@@ -128,73 +129,4 @@ test('4: feedback closes automatically 7 days after the end',async()=>{
   assert.deepEqual(await A.closeExpiredFeedback(db,ended+6*24*H),[]);
   assert.deepEqual(await A.closeExpiredFeedback(db,ended+7*24*H),['a']);
   assert.ok((await get('activities/a')).feedbackClosedAt);
-});
-
-function fakeProvider(map){
-  const seen=[];
-  return {seen,async classify(req){seen.push(req);
-    if(req.text.includes('실패'))return {tags:'broken'};
-    return {tags:map(req.text),model:'fake-model',modelVersion:'2026-10'};}};
-}
-async function closedWithFeedback(){
-  await A.endActivity(db,'admin',{activityId:'a'});
-  for(const u of ['u2','u3','u4','u0'])await A.setLearningConsent(db,u,{agreed:u!=='u0'});
-  await A.submitFeedback(db,'u2',{activityId:'a',scores:scores(),comment:'최유나님이 일정을 잘 맞춰줬지만 박서준이 늦었어요'});
-  await A.submitFeedback(db,'u3',{activityId:'a',scores:scores(),comment:'역할 분담이 애매했어요'});
-  await A.submitFeedback(db,'u4',{activityId:'a',scores:scores(),comment:'실패할 문장'});
-  await A.submitFeedback(db,'u0',{activityId:'a',scores:scores(),comment:'동의 안 함 김민수'});
-  await A.closeFeedback(db,'admin',{activityId:'a'});
-}
-const byKeyword=text=>text.includes('일정')?[{tag:'schedule',sentiment:'pos'},{tag:'personality',sentiment:'neg'}]:[{tag:'roles',sentiment:'neg'}];
-
-test('5: names masked before sending, consent respected, unknown tags dropped, failures recorded',async()=>{
-  await closedWithFeedback();
-  const provider=fakeProvider(byKeyword);
-  assert.deepEqual(await T.tagActivity(db,'a',provider),{status:'done',tagged:2,failed:1});
-  const sent=provider.seen.map(r=>r.text);
-  assert.ok(sent.includes('[팀원]님이 일정을 잘 맞춰줬지만 [팀원]이 늦었어요'));
-  assert.ok(sent.every(t=>!/김민수|이지은|박서준|최유나|정하늘/.test(t)));
-  assert.ok(!sent.some(t=>t.includes('동의 안 함')),'동의하지 않은 후기는 보내지 않음');
-  assert.ok(provider.seen.every(r=>r.temperature===0));
-  const tags=u=>get(`feedback/a_${u}`).then(f=>f.commentTags);
-  const t2=await tags('u2');
-  assert.deepEqual([t2.version,t2.status,t2.model,t2.modelVersion],['ctag1','ok','fake-model','2026-10']);
-  assert.deepEqual(t2.tags,[{tag:'schedule',sentiment:'pos'}]);
-  assert.equal((await tags('u4')).status,'failed');
-  assert.equal((await tags('u0')),null);
-  assert.equal(provider.seen.filter(r=>r.text==='실패할 문장').length,2,'형식 오류는 1회 재시도');
-  const s=await get('activities/a/feedbackSummary/current');
-  assert.deepEqual(s.teams.team_2.tags,{schedule:{pos:1,neg:0,neutral:0},roles:{pos:0,neg:1,neutral:0}});
-});
-
-test('5: same input gives the same result; already tagged comments are not sent again',async()=>{
-  await closedWithFeedback();
-  await T.tagActivity(db,'a',fakeProvider(byKeyword));
-  const first=(await get('feedback/a_u3')).commentTags;
-  const again=fakeProvider(byKeyword);
-  await T.tagActivity(db,'a',again);
-  assert.deepEqual(again.seen.map(r=>r.text),['실패할 문장','실패할 문장'],'실패한 것만 다시 시도');
-  assert.deepEqual((await get('feedback/a_u3')).commentTags.tags,first.tags);
-});
-
-test('5: nothing happens before feedback closes or without a configured provider',async()=>{
-  await A.endActivity(db,'admin',{activityId:'a'});
-  await A.setLearningConsent(db,'u3',{agreed:true});
-  await A.submitFeedback(db,'u3',{activityId:'a',scores:scores(),comment:'역할 분담이 애매했어요'});
-  assert.equal((await T.tagActivity(db,'a',fakeProvider(byKeyword))).status,'not_closed');
-  await A.closeFeedback(db,'admin',{activityId:'a'});
-  assert.equal(T.configuredProvider(),null);
-  assert.equal((await T.tagActivity(db,'a',T.configuredProvider())).status,'no_provider');
-  assert.equal((await get('feedback/a_u3')).commentTags,null);
-});
-
-test('4: an edited comment drops its old tags so it is tagged again',async()=>{
-  await A.endActivity(db,'admin',{activityId:'a'});
-  await A.setLearningConsent(db,'u3',{agreed:true});
-  await A.submitFeedback(db,'u3',{activityId:'a',scores:scores(),comment:'역할 분담이 애매했어요'});
-  await db.doc('feedback/a_u3').update({commentTags:{version:'ctag1',status:'ok',tags:[]}});
-  await A.submitFeedback(db,'u3',{activityId:'a',scores:scores(5),comment:'역할 분담이 애매했어요'});
-  assert.equal((await get('feedback/a_u3')).commentTags.status,'ok');
-  await A.submitFeedback(db,'u3',{activityId:'a',scores:scores(5),comment:'다시 생각해 보니 괜찮았어요'});
-  assert.equal((await get('feedback/a_u3')).commentTags,null);
 });

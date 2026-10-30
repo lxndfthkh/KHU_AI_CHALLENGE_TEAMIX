@@ -1,4 +1,4 @@
-"""Stage 6 extraction (편성학습_v3 6장, 개발단계 가이드 6단계 통과 기준)."""
+"""Stage 6 extraction (편성학습_v4 6장, 개발단계 가이드 6단계 통과 기준)."""
 import os
 import unittest
 import urllib.request
@@ -25,11 +25,10 @@ def published_store(n=6):
     return store
 
 
-def review(uid, team, overall=4, consent=True, ratio=1.0, comment=None, tags=None):
+def review(uid, team, overall=4, consent=True, ratio=1.0):
     return {'activityId': 'a', 'groupId': 'g', 'userId': uid, 'teamId': team, 'teamVersion': 1,
-            'scores': {'overall': overall, 'schedule': 3, 'roles': 4, 'rejoin': 5}, 'comment': comment,
-            'learningConsent': consent, 'membershipRatio': ratio,
-            'commentTags': {'status': 'ok', 'tags': tags} if tags is not None else None}
+            'scores': {'overall': overall, 'schedule': 3, 'roles': 4, 'rejoin': 5},
+            'learningConsent': consent, 'membershipRatio': ratio}
 
 
 def members(store, team):
@@ -78,27 +77,14 @@ class ExtractTests(unittest.TestCase):
 
     def test_no_personal_data_in_rows(self):
         self.store['placementPreferences/g_u0_u1'] = {'groupId': 'g', 'userId': 'u0', 'targetUserId': 'u1', 'active': True}
-        feedback = [review(u, 'team_1', comment=f'{u}의 비밀 후기', tags=[{'tag': 'schedule', 'sentiment': 'neg'}]) for u in self.t1]
-        rows = rows_for(self.store, feedback)
+        rows = rows_for(self.store, [review(u, 'team_1') for u in self.t1])
         text = str(rows)
         for uid in self.t1 + self.t2:
             self.assertNotIn(f"'{uid}'", text)
-        for word in ('비밀 후기', 'targetUserId', 'J_int', 'answers', 'displayName'):
+        for word in ('targetUserId', 'J_int', 'answers', 'displayName', 'tagrate', 'comment'):
             self.assertNotIn(word, text)
         refs = rows['a_v1_team_1']['sourceRefs']
         self.assertEqual(refs, sorted(source_ref(f'feedback/a_{u}') for u in self.t1))
-
-    def test_tag_rates_over_tagged_reviews_only(self):
-        a, b, c = self.t1
-        feedback = [review(a, 'team_1', comment='x', tags=[{'tag': 'schedule', 'sentiment': 'neg'}]),
-                    review(b, 'team_1', comment='y', tags=[{'tag': 'schedule', 'sentiment': 'pos'}, {'tag': 'roles', 'sentiment': 'neg'}]),
-                    review(c, 'team_1')]
-        row = rows_for(self.store, feedback)['a_v1_team_1']
-        self.assertEqual((row['n_comments'], row['n_tagged']), (2, 2))
-        self.assertEqual((row['tagrate_schedule_neg'], row['tagrate_schedule_pos'], row['tagrate_roles_neg']), (0.5, 0.5, 0.5))
-        self.assertEqual(row['tagrate_atmosphere_pos'], 0)
-        untagged = rows_for(self.store, [review(u, 'team_1') for u in self.t1])['a_v1_team_1']
-        self.assertIsNone(untagged['tagrate_schedule_neg'])
 
     def test_unused_criteria_are_zero_and_history_fields(self):
         self.store['activities/a/settings/matching']['priority'] = ['role', 'size']

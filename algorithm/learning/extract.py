@@ -1,11 +1,11 @@
-"""Stage 6: training rows from closed feedback (편성학습_v3 6장) on main's schema.
+"""Stage 6: training rows from closed feedback (편성학습_v4 6장) on main's schema.
 
 One row = one team of the publication current when the activity ended (activities.endedVersion).
   trainingDatasets/fx1                        {extractorVersion, updatedAt, dirty}
   trainingDatasets/fx1/rows/{a}_v{n}_{team}   features + targets (below)
   trainingDatasets/fx1/activities/{a}         {extractedAt, summaryUpdatedAt, rowIds}  (re-extract marker)
-All server-only (default-deny rules). Rows carry no user IDs, answers, private preferences, internal
-scores or comment text; sourceRefs are SHA-256 hashes of feedback paths (deletion tracking, stage 9).
+All server-only (default-deny rules). Rows carry no user IDs, answers, private preferences or internal
+scores; sourceRefs are SHA-256 hashes of feedback paths (deletion tracking, stage 9). Feedback is scores only.
 
 Run as a job:  python -m learning.extract            (all closed activities that changed)
                python -m learning.extract --activity A
@@ -16,7 +16,6 @@ import hashlib
 EXTRACTOR_VERSION = 'fx1'
 DATASET = 'fx1'
 CRITERIA = ['time', 'role', 'experience', 'interest', 'size']
-TAGS = ['schedule', 'roles', 'skill_gap', 'interest', 'team_size', 'communication', 'participation', 'atmosphere', 'other']
 SCORES = ['overall', 'schedule', 'roles', 'rejoin']
 MIN_RATIO, MIN_REVIEWS, MIN_RESPONSE_RATE = 0.5, 2, 0.5
 
@@ -57,13 +56,7 @@ def build_rows(activity_id, activity, settings, publication, feedback):
         row['republishCount'] = publication['version'] - 1
         for k in SCORES:
             row[f'y_{k}'] = sum(r['scores'][k] for r in reviews) / n
-        tagged = [r for r in reviews if (r.get('commentTags') or {}).get('status') == 'ok']
-        for tag in TAGS:
-            for s in ('neg', 'pos'):
-                hits = sum(any(t['tag'] == tag and t['sentiment'] == s for t in r['commentTags']['tags']) for r in tagged)
-                row[f'tagrate_{tag}_{s}'] = hits / len(tagged) if tagged else None
-        row.update(n_reviews=n, n_comments=sum(bool(r.get('comment')) for r in reviews), n_tagged=len(tagged),
-                   response_rate=n / size, activityId=activity_id, teamVersion=publication['version'], teamId=tid,
+        row.update(n_reviews=n, response_rate=n / size, activityId=activity_id, teamVersion=publication['version'], teamId=tid,
                    sourceRefs=sorted(source_ref(f"feedback/{activity_id}_{r['userId']}") for r in reviews),
                    extractorVersion=EXTRACTOR_VERSION)
         rows[f"{activity_id}_v{publication['version']}_{tid}"] = row
@@ -102,7 +95,7 @@ def extract_activity(db, activity_id):
 
 
 def pending(db):
-    """Closed activities never extracted, or whose summary changed since (e.g. tagging finished later)."""
+    """Closed activities never extracted, or whose feedback summary changed since."""
     out = []
     for snap in db.collection('activities').where('status', '==', 'ended').stream():
         a = snap.to_dict()

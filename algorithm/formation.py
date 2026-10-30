@@ -31,6 +31,25 @@ def rounded(a, b=1):
     return (2*v.numerator + v.denominator)//(2*v.denominator)
 
 
+def learned_weights(priority, factors=None):
+    """편성학습_v4 9장: w'_q = round(10 * w_q * b_q), priority order kept, w'_q >= 1.
+
+    w_q = m - r + 1 (편성알고리즘_v3 5장). Without a model every b_q = 1, so all weights and W are
+    exactly 10x the v3 weights and the formation result is unchanged.
+    """
+    factors = factors or {}
+    require(isinstance(factors, dict) and set(factors) <= set(priority), '보정 계수 확인 필요')
+    for v in factors.values():
+        require(type(v) in (int, float) and math.isfinite(v) and 0.5 <= v <= 2.0, '보정 계수 확인 필요')
+    weights, previous = {}, None
+    for r, q in enumerate(priority):
+        w = rounded(Fraction(10 * (len(priority) - r)) * Fraction(factors.get(q, 1)).limit_denominator(10**6))
+        if previous is not None:
+            w = min(w, previous)
+        weights[q] = previous = max(1, w)
+    return weights
+
+
 def prepare(raw):
     s = json.loads(json.dumps(raw))
     people, teams = s.get('participants', []), s.get('teams', [])
@@ -62,7 +81,7 @@ def prepare(raw):
             require(ok, f'{p["id"]}: {q} 응답 요청 또는 질문 전체/참가자 제외가 필요합니다')
     for t in teams:
         require(t.get('capacity') is None or type(t['capacity']) is int and t['capacity'] > 0, '정원 확인 필요')
-    s['weights'] = {q: len(priority)-r for r,q in enumerate(priority)}
+    s['weights'] = learned_weights(priority, s.get('weightFactors'))
     s['published'] = {i:t for i,t in s.get('published', {}).items() if i in ids}
     s['draft'] = {i:t for i,t in s.get('draft', {}).items() if i in ids and t is not None}
     s.setdefault('locks', {})

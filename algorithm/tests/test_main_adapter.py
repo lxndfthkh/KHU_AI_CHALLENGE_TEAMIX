@@ -42,7 +42,8 @@ def collect(store, a='a'):
             'questions': under(f'activities/{a}/questions/'), 'memberships': under('memberships/'),
             'registrations': under('registrations/'), 'draft': deepcopy(store.get(f'drafts/{a}')),
             'publication': deepcopy(store.get(f'publications/{a}_v{version}')) if version else None,
-            'preferences': list(under('placementPreferences/').values()), 'teamViews': under('teamViews/')}
+            'preferences': list(under('placementPreferences/').values()), 'teamViews': under('teamViews/'),
+            'learning': deepcopy(store.get('appConfig/learning'))}
 
 
 class MemoryMainRepository:

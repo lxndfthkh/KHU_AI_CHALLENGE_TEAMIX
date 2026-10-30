@@ -85,7 +85,8 @@
       "teamIds": "list, server-set at closeRecruitment (count = ceil(participants / targetTeamSize)); never recomputed afterwards",
       "teamCapacities": "map teamId -> positive integer or null (no capacity); default ceil(N/K) set once at closeRecruitment",
       "capacityInitialized": "boolean, server-maintained",
-      "settingsVersion": "integer, server-maintained; bumped on every settings change"
+      "settingsVersion": "integer, server-maintained; bumped on every settings change",
+      "learningEnabled": "boolean, default true; per-activity switch for learned correction factors (편성학습_v4 9장)"
     },
     "notes": "Admin-only read. Placement preferences are NOT copied here. Engine fields are written by createActivity/updateMatchingSettings/closeRecruitment on the server."
   },
@@ -171,17 +172,16 @@
       "userId": "uid",
       "teamId": "id",
       "rating": "integer 1..5 (= scores.overall)",
-      "comment": "optional string",
+      "comment": "not collected (TEAMBLE: scores only, 편성학습_v4); submitFeedback rejects it",
       "createdAt": "timestamp",
-      "scores": "{overall, schedule, roles, rejoin} each integer 1..5 (questionnaire r1)",
-      "questionnaireVersion": "r1",
+      "scores": "{overall, schedule, roles, rejoin} each integer 1..5 (questionnaire r2)",
+      "questionnaireVersion": "r2",
       "teamVersion": "integer, endedVersion (server-set; client values ignored)",
       "membershipRatio": "0..1, time in teamId during [startedAt, endedAt] across publications (server-set)",
       "learningConsent": "boolean copy of consents/{uid}.learning.agreed at writing time",
-      "commentTags": "null | {version: ctag1, status: ok | failed, tags: [{tag, sentiment}], model, modelVersion, taggedAt} (server-set after feedback closes)",
       "updatedAt": "timestamp"
     },
-    "notes": "Only author reads raw record. Server checks ended activity and participant. Admin reads aggregate from activities/{id}/feedbackSummary/current. Written by submitFeedback; editable until feedbackClosedAt. Editing the comment clears commentTags."
+    "notes": "Only author reads raw record. Server checks ended activity and participant. Admin reads aggregate from activities/{id}/feedbackSummary/current. Written by submitFeedback; editable until feedbackClosedAt."
   },
   "placementPreferences": {
     "path": "placementPreferences/{groupId}_{uid}_{targetUid}",
@@ -219,17 +219,17 @@
   "feedbackSummary": {
     "path": "activities/{activityId}/feedbackSummary/current",
     "fields": {
-      "questionnaireVersion": "r1",
+      "questionnaireVersion": "r2",
       "minRespondents": "3",
-      "teams": "map teamId -> {respondents, averages {overall, schedule, roles, rejoin}, tags {tag: {pos, neg, neutral}}}; only teams with >= 3 respondents",
+      "teams": "map teamId -> {respondents, averages {overall, schedule, roles, rejoin}}; only teams with >= 3 respondents",
       "updatedAt": "timestamp"
     },
-    "notes": "Admin read only. No individual rows, user IDs or comment text."
+    "notes": "Admin read only. No individual rows or user IDs."
   },
   "consents": {
     "path": "consents/{uid}",
     "fields": {
-      "learning": "{agreed: boolean, version: l1, at: timestamp}",
+      "learning": "{agreed: boolean, version: l2, at: timestamp}",
       "updatedAt": "timestamp"
     },
     "notes": "Owner read only; written by setLearningConsent. Kept out of users/{uid} because its rules allow only displayName/createdAt/updatedAt."
@@ -245,10 +245,10 @@
   "trainingDatasets": {
     "path": "trainingDatasets/fx1, trainingDatasets/fx1/rows/{activityId}_v{n}_{teamId}, trainingDatasets/fx1/activities/{activityId}",
     "fields": {
-      "rows": "one team of the ending publication: activityType, formationMode, teamCount, teamSize, active_* and loss_* per criterion (loss = publication losses / 1000), commonSlotCount, manuallyEdited, republishCount, y_overall/schedule/roles/rejoin, tagrate_{tag}_{neg|pos} (null if no tagged comment), n_reviews, n_comments, n_tagged, response_rate, activityId, teamVersion, teamId, sourceRefs (sha256 of feedback paths), extractorVersion fx1",
+      "rows": "one team of the ending publication: activityType, formationMode, teamCount, teamSize, active_* and loss_* per criterion (loss = publication losses / 1000), commonSlotCount, manuallyEdited, republishCount, y_overall/schedule/roles/rejoin, weight_* (v3 default weights), n_reviews, response_rate, activityId, teamVersion, teamId, sourceRefs (sha256 of feedback paths), extractorVersion fx1",
       "activities": "re-extraction marker {extractedAt, rowIds, summaryUpdatedAt}"
     },
-    "notes": "Server-only (default deny). Written by algorithm/learning/extract.py after feedback closes. No user IDs, answers, private preferences, internal scores or comment text. Included reviews: learningConsent and membershipRatio >= 0.5; rows need >= 2 included reviews and response rate >= 0.5."
+    "notes": "Server-only (default deny). Written by algorithm/learning/extract.py after feedback closes. No user IDs, answers, private preferences, or internal scores. Included reviews: learningConsent and membershipRatio >= 0.5; rows need >= 2 included reviews and response rate >= 0.5."
   },
   "trainingRuns": {
     "path": "trainingRuns/{runId}",
@@ -273,14 +273,13 @@
       "coefficients": "standardized coefficients by feature",
       "featureNames": "list",
       "scaler": "{mean, scale}",
-      "validation": "{rmse {model, baseline_mean, baseline_weighted_loss}, auxiliary, directionMismatches, reformationCheck}",
+      "validation": "{rmse {model, baseline_mean, baseline_weighted_loss}, auxiliary (y_schedule, y_roles, y_rejoin), reformationCheck}",
       "bootstrapInterval": "80% interval per criterion",
       "uncertain": "criteria with b = 1 because the interval contains 0",
       "rowCount": "integer",
       "activityCount": "integer",
       "datasetId": "fx1",
       "extractorVersion": "fx1",
-      "tagVersion": "ctag1",
       "trainerVersion": "tr1",
       "trainedAt": "timestamp",
       "approvedBy": "uid or null",
@@ -299,6 +298,6 @@
       "activatedAt": "timestamp",
       "activatedBy": "uid"
     },
-    "notes": "Signed-in read (existing appConfig rule), server write. Read by the formation engine in stage 8."
+    "notes": "Signed-in read (existing appConfig rule), server write (models.js). The formation engine applies b only when the activity's learningEnabled is true."
   }
 }

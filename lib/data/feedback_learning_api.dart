@@ -85,10 +85,10 @@ class FeedbackLearningApi {
   }
   Future<Map<String, dynamic>> startActivity(String activityId) => call('startActivity', {'activityId': activityId});
   Future<Map<String, dynamic>> endActivity(String activityId) => call('endActivity', {'activityId': activityId});
-  /// scores: overall, schedule, roles, rejoin (1-5). comment: optional, up to 1,000 characters.
+  /// scores: overall, schedule, roles, rejoin (1-5). No free text (편성학습_v4).
   /// The team is decided by the server from the version that was current when the activity ended.
-  Future<Map<String, dynamic>> submitFeedback(String activityId, Map<String, int> scores, {String? comment}) =>
-    call('submitFeedback', {'activityId': activityId, 'scores': scores, 'comment': ?comment});
+  Future<Map<String, dynamic>> submitFeedback(String activityId, Map<String, int> scores) =>
+    call('submitFeedback', {'activityId': activityId, 'scores': scores});
   Future<Map<String, dynamic>> closeFeedback(String activityId) => call('closeFeedback', {'activityId': activityId});
   /// Own preferences only; firestore.rules allow the author to read them.
   Stream<QuerySnapshot<Map<String, dynamic>>> ownPreferences(String groupId) {

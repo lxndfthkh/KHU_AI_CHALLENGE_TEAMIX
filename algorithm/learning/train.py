@@ -1,4 +1,4 @@
-"""Stage 7: train, validate and register correction factors (편성학습_v3 8·10장).
+"""Stage 7: train, validate and register correction factors (편성학습_v4 8·10장).
 
   train(rows, seed)       pure: rows -> result {status, alpha, coefficients, b, validation, ...}
   run_training(db, ...)   reads trainingDatasets/fx1/rows, records trainingRuns/{id};
@@ -12,6 +12,7 @@ from datetime import datetime, timezone
 import hashlib
 import json
 import math
+import time
 
 import numpy as np
 from sklearn.linear_model import Ridge
@@ -26,9 +27,6 @@ MIN_ROWS, MIN_ACTIVITIES, NEW_ROWS_TRIGGER = 30, 5, 10
 B_RANGE, IMPROVEMENT = (0.5, 2.0), 0.05
 MODES, TYPES = ['balanced', 'similar'], ['study', 'project', 'social', 'other']
 AUX_SCORES = ['y_schedule', 'y_roles', 'y_rejoin']
-# Criterion -> tag whose negative rate should rise with that criterion's loss (8장 7번, 10장 방향 비교).
-LINKED_TAG = {'time': 'tagrate_schedule_neg', 'role': 'tagrate_roles_neg', 'experience': 'tagrate_skill_gap_neg',
-              'interest': 'tagrate_interest_neg', 'size': 'tagrate_team_size_neg'}
 
 
 def features(rows):
@@ -122,8 +120,8 @@ def train(rows, seed=0):
         rmse['model'] <= (1 - IMPROVEMENT) * rmse['baseline_weighted_loss']
 
     aux = {}
-    for target in AUX_SCORES + list(LINKED_TAG.values()):
-        sub = [i for i, r in enumerate(rows) if r.get(target) is not None and (target in AUX_SCORES or r['n_comments'] >= 2)]
+    for target in AUX_SCORES:
+        sub = [i for i, r in enumerate(rows) if r.get(target) is not None]
         if len(sub) < MIN_ROWS or len({rows[i]['activityId'] for i in sub}) < MIN_ACTIVITIES:
             aux[target] = {'status': 'insufficient_data', 'rows': len(sub)}
             continue
@@ -131,15 +129,44 @@ def train(rows, seed=0):
         _, m = fit(X[sub], ya, w[sub], alpha)
         aux[target] = {'status': 'ok', 'rows': len(sub), 'rmse': cv_rmse(X[sub], ya, w[sub], groups[sub], ridge_maker(alpha)),
                        'lossCoefficients': {q: float(m.coef_[names.index(f'loss_{q}')]) for q in CRITERIA}}
-    # A larger weight for q should come with "more q-loss -> more negative q-tags"; flag when it does not.
-    mismatches = [q for q in CRITERIA if b[q] > 1.1 and aux[LINKED_TAG[q]]['status'] == 'ok'
-                  and aux[LINKED_TAG[q]]['lossCoefficients'][q] <= 0]
     return {**base, 'status': 'candidate' if candidate else 'not_better_than_baselines', 'alpha': alpha,
             'featureNames': names, 'coefficients': coef, 'intercept': float(model.intercept_),
             'scaler': {'mean': scaler.mean_.tolist(), 'scale': scaler.scale_.tolist()},
             'b': b, 'importance': s, 'shrinkage': lam, 'bootstrapInterval': interval, 'uncertain': sorted(uncertain),
-            'validation': {'rmse': rmse, 'improvementRequired': IMPROVEMENT, 'auxiliary': aux,
-                           'directionMismatches': mismatches, 'reformationCheck': 'stage8'}, 'seed': seed}
+            'validation': {'rmse': rmse, 'improvementRequired': IMPROVEMENT, 'auxiliary': aux}, 'seed': seed}
+
+
+RECHECK_ACTIVITIES, RECHECK_LIMIT, RECHECK_SECONDS = 3, 5, 30
+VALID = ('OPTIMAL', 'FEASIBLE')
+
+
+def reformation_check(db, b):
+    """10장 추가 확인: re-form the latest rosters of the 3 most recent activities with b applied.
+
+    Uses the server-only snapshot of each activity's latest valid run as a fresh first formation
+    (published/draft/locks dropped). The report keeps statuses, team sizes and seconds only.
+    """
+    from formation import solve
+    seen, checks = set(), []
+    for run in db.collection('formationRuns').order_by('createdAt', direction='DESCENDING').limit(200).stream():
+        r = run.to_dict()
+        if r.get('status') not in VALID or r.get('activityId') in seen:
+            continue
+        snap = db.document(f'serverRuns/{run.id}').get()
+        if not snap.exists:
+            continue
+        seen.add(r['activityId'])
+        raw = {k: v for k, v in snap.to_dict()['snapshot'].items() if k not in ('published', 'draft', 'locks', 'scopeTeamIds')}
+        raw.update(weightFactors=b, limit=RECHECK_LIMIT)
+        start = time.monotonic()
+        result = solve(raw)
+        seconds = round(time.monotonic() - start, 2)
+        ok = result['status'] in VALID and result.get('requiredStatus', {}).get('valid') is True and seconds <= RECHECK_SECONDS
+        checks.append({'activityId': r['activityId'], 'status': result['status'], 'requiredValid': result.get('requiredStatus', {}).get('valid'),
+                       'seconds': seconds, 'teamSizes': sorted(t['size'] for t in result.get('publicSummary', {}).values()), 'passed': ok})
+        if len(checks) == RECHECK_ACTIVITIES:
+            break
+    return {'status': 'no_recent_runs' if not checks else 'passed' if all(c['passed'] for c in checks) else 'failed', 'activities': checks}
 
 
 def should_train(rows_now, last_run, now):
@@ -158,12 +185,16 @@ def run_training(db, dataset='fx1', now=None, force=False, seed=0):
     if not force and not should_train(len(rows), last, now):
         return {'status': 'not_due'}
     result = train([{k: v for k, v in r.items() if k != 'extractedAt'} for r in rows], seed=seed)
+    if result['status'] == 'candidate':
+        result['validation']['reformationCheck'] = check = reformation_check(db, result['b'])
+        if check['status'] == 'failed':
+            result['status'] = 'failed_reformation_check'
     run_id = f"{now.strftime('%Y%m%dT%H%M%S')}_{result['datasetHash'][:8]}"
     db.document(f'trainingRuns/{run_id}').set({**{k: result[k] for k in ('status', 'rowCount', 'activityCount', 'datasetHash', 'trainerVersion')},
                                                 'trainedAt': now, 'datasetId': dataset, 'modelId': run_id if result['status'] == 'candidate' else None})
     if result['status'] == 'candidate':
         db.document(f'modelVersions/{run_id}').set({**result, 'datasetId': dataset, 'trainedAt': now, 'status': 'candidate',
-                                                    'extractorVersion': 'fx1', 'tagVersion': 'ctag1',
+                                                    'extractorVersion': 'fx1',
                                                     'approvedBy': None, 'approvedAt': None, 'fileUri': None})
     return {'status': result['status'], 'runId': run_id}
 

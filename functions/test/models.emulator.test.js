@@ -50,6 +50,16 @@ test('7: one active model; activating another retires the previous; rollback wor
   const c=await get('appConfig/learning');assert.equal(c.activeModelId,null);assert.equal(c.b,null);
 });
 
+test('8: activating or deactivating a model never touches published teams or drafts',async()=>{
+  const pub={activityId:'a',version:1,teams:[{teamId:'team_1',members:[{uid:'u0'}]}]},draft={activityId:'a',version:3,teams:[]};
+  await db.doc('publications/a_v1').set(pub);await db.doc('drafts/a').set(draft);
+  await M.approveModel(db,'root',{modelId:'m1'},ADMIN);
+  await M.activateModel(db,'root',{modelId:'m1'},ADMIN);
+  await M.deactivateModel(db,'root',{},ADMIN);
+  assert.deepEqual(await get('publications/a_v1'),pub);
+  assert.deepEqual(await get('drafts/a'),draft);
+});
+
 test('7: unknown models and repeated calls',async()=>{
   await rejects(M.approveModel(db,'root',{modelId:'nope'},ADMIN),'not-found');
   await M.approveModel(db,'root',{modelId:'m1'},ADMIN);

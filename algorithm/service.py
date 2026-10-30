@@ -43,6 +43,18 @@ def base_draft(s):
     return {**existing,'assignments':assignments,'locks':locks,'basedOnPublishedVersionId':a.get('publishedVersionId'),'discarded':False}
 
 
+def learning(s):
+    """편성학습_v4 9장: correction factors apply only with an active model and the activity switch on."""
+    l=s.get('learning') or {}
+    on=bool(l.get('enabled',True) and l.get('modelId') and l.get('b'))
+    return {'enabled':l.get('enabled',True),'modelId':l.get('modelId') if on else None,'b':l.get('b') if on else None}
+
+
+def directions(b):
+    """Officer screen shows only a direction per criterion, never the numbers or the data behind them."""
+    return {q:('up' if v > 1.1 else 'down' if v < 0.9 else 'same') for q,v in (b or {}).items()}
+
+
 def snapshot(s, body, include_private=True):
     a=s['activity']; draft=base_draft(s)
     criteria=sorted(a['criteria'],key=lambda c:c['priority'])
@@ -71,6 +83,7 @@ def snapshot(s, body, include_private=True):
          'categories':{k:q['scale'] for k,q in questions.items() if k != 'experience'},
          'published':s['published'],'draft':draft['assignments'],'locks':draft['locks'],
          'required_roles':roles,'require_common_time':common,'seed':body.get('seed',42),'limit':body.get('limit',10),
+         'weightFactors':learning(s)['b'],
          'private_preferences':[{'source':p['ownerUid'],'target':p['targetUid'],'confirmed':True} for p in s['preferences'].values() if p.get('status') == 'active'] if include_private else []}
     if body.get('kind') == 'partial': raw['scopeTeamIds']=body.get('scopeTeamIds')
     require(body.get('kind','initial') in ('initial','republish','partial'),'실행 종류 확인 필요')
@@ -106,7 +119,8 @@ class FormationService:
             if action != 'precheck': expected(s,body.get('expected'))
             if action == 'settings':
                 patch=body.get('patch',{})
-                require(isinstance(patch,dict) and set(patch) <= {'teamIds','capacity','criteria','formationMode','extraRequirements'},'설정 항목 확인 필요')
+                require(isinstance(patch,dict) and set(patch) <= {'teamIds','capacity','criteria','formationMode','extraRequirements','learningEnabled'},'설정 항목 확인 필요')
+                require(type(patch.get('learningEnabled',True)) is bool,'학습 보정 스위치 확인 필요')
                 changed={**s['activity'],**patch}
                 tids=changed.get('teamIds',[])
                 require(isinstance(tids,list) and 0 < len(tids) <= 100 and all(isinstance(t,str) for t in tids) and len(set(tids)) == len(tids),'팀 ID 확인 필요')
@@ -126,6 +140,7 @@ class FormationService:
                 prepare(dummy)
                 output={k:changed[k] for k in ('teamIds','criteria','formationMode','extraRequirements')}
                 output.update(capacity=cap,capacityInitialized=True,settingsVersion=s['activity'].get('settingsVersion',0)+1)
+                if 'learningEnabled' in patch: output['learningEnabled']=patch['learningEnabled']
                 tx.set(base,output,merge=True)
                 return {'settingsVersion':output['settingsVersion'],'notice':'팀 수가 바뀌었다면 기존 팀 정원을 확인해 주세요'}
             if action == 'close':
@@ -157,7 +172,9 @@ class FormationService:
                             seats=sum(c-list(normalized['fixed'].values()).count(t) for t,c in caps.items())
                             placing=sum(p['id'] not in normalized['fixed'] for p in normalized['participants'])
                             if seats < placing: errors.append(f'선택한 팀의 남은 자리는 {seats}개인데 새로 배정할 참가자는 {placing}명입니다')
-                    return {'valid':not errors,'conflicts':errors,'versions':versions(s),'feasibilityProven':False}
+                    l=learning(s)
+                    return {'valid':not errors,'conflicts':errors,'versions':versions(s),'feasibilityProven':False,
+                            'learning':{'enabled':l['enabled'],'modelId':l['modelId'],'directions':directions(l['b'])}}
                 except Invalid as e: return {'valid':False,'conflicts':[str(e)],'versions':versions(s),'feasibilityProven':False}
             if action == 'edit':
                 d=base_draft(s); assignments=d['assignments']; locks=d['locks']
@@ -242,7 +259,7 @@ class FormationService:
                 response={k:v for k,v in response.items() if k not in ('publicSummary','requiredStatus')}
             response.update(runId=run_id,applied=status in VALID)
             record={**response,'requestedBy':uid,'createdAt':stamp,'kind':body.get('kind','initial'),
-                    'snapshotVersions':versions(s),'weightsUsed':prepare(raw)['weights'],'modelId':None,
+                    'snapshotVersions':versions(s),'weightsUsed':prepare(raw)['weights'],'modelId':learning(s)['modelId'],
                     'specVersion':'v3','engineVersion':ENGINE_VERSION,'solverVersion':result.get('internal',{}).get('solverVersion')}
             tx.set(base+'/formationRuns/'+run_id,record)
             tx.set('serverRuns/'+run_id,{'snapshot':raw,'prefVersion':s['meta'].get('prefVersion',0),'internal':result.get('internal',{}),'createdAt':stamp,'status':status})

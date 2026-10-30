@@ -1,4 +1,4 @@
-"""Stage 7 training on synthetic rows (편성학습_v3 8·10·13장, 개발단계 가이드 7단계).
+"""Stage 7 training on synthetic rows (편성학습_v4 8·10·13장, 개발단계 가이드 7단계).
 
 These show that the pipeline works, not that it improves satisfaction (13장 가상 데이터 검증).
 """
@@ -23,12 +23,10 @@ def synthetic(activities=8, teams=5, effect=None, seed=1, noise=0.1):
             loss = {q: float(rng.uniform(0, 1)) for q in CRITERIA}
             y = 4.0 + sum(s * (loss[q] - 0.5) for q, s in (effect or {}).items()) + rng.normal(0, noise)
             row = {'activityId': f'a{a}', 'teamVersion': 1, 'teamId': f'team_{t}', 'activityType': None,
-                   'formationMode': 'balanced' if a % 2 else 'similar', 'teamSize': 4, 'n_reviews': 3, 'n_comments': 0,
+                   'formationMode': 'balanced' if a % 2 else 'similar', 'teamSize': 4, 'n_reviews': 3,
                    'y_overall': float(min(5, max(1, y))), 'y_schedule': 3.0, 'y_roles': 3.0, 'y_rejoin': 3.0}
             for q in CRITERIA:
                 row.update({f'loss_{q}': loss[q], f'active_{q}': 1, f'weight_{q}': PRIORITY_W[q]})
-            for tag in ('schedule', 'roles', 'skill_gap', 'interest', 'team_size'):
-                row[f'tagrate_{tag}_neg'] = None
             rows.append(row)
     return rows
 
@@ -75,12 +73,11 @@ class TrainTests(unittest.TestCase):
         self.assertEqual((b['time'], b['role'], b['experience'], b['interest']), (2.0, 1.0, 0.5, 0.5))
         self.assertEqual(corrections({q: 0.3 for q in CRITERIA}, set(), 100)[0], {q: 1.0 for q in CRITERIA})
 
-    def test_auxiliary_models_report_only_and_skip_missing_tags(self):
+    def test_auxiliary_score_models_are_report_only(self):
         result = train(synthetic(effect={'time': -2.0}))
         aux = result['validation']['auxiliary']
-        self.assertEqual(aux['y_schedule']['status'], 'ok')
-        self.assertEqual(aux['tagrate_schedule_neg']['status'], 'insufficient_data')
-        self.assertEqual(result['validation']['directionMismatches'], [])
+        self.assertEqual(sorted(aux), ['y_rejoin', 'y_roles', 'y_schedule'])
+        self.assertTrue(all(a['status'] == 'ok' for a in aux.values()))
 
     def test_schedule(self):
         june = datetime(2026, 6, 3, tzinfo=timezone.utc)

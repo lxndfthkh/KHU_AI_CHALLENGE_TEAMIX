@@ -14,11 +14,13 @@ this module is the only place that knows main's storage layout:
   teamViews/{a}_{uid}                       participant's own team
   notifications/{a}_v{n}_{uid}              teamPublished | teamChanged
   formationRuns/{run}, serverRuns/{run}     server-only (default-deny paths)
+  appConfig/learning                        active model {activeModelId, b} (stage 7-8)
 
 settings/matching engine fields, added next to main's method/enabledQuestionIds:
   questionCriteria {qid: role|time|experience|interest}, priority [criteria..., 'size'],
   requireCommonTime, requiredRoles [{teamId, optionId, minimum}],
-  teamIds, teamCapacities {teamId: int|null}, capacityInitialized, settingsVersion.
+  teamIds, teamCapacities {teamId: int|null}, capacityInitialized, settingsVersion,
+  learningEnabled (default true; per-activity switch for learned correction factors).
 Reads precede buffered writes; Admin SDK bypasses rules, so the service checks roles.
 """
 from copy import deepcopy
@@ -99,9 +101,12 @@ def build_state(g, a, docs):
                 'ownerUid': p['userId'], 'targetUid': p['targetUserId'], 'status': 'active'}
     notified = {v['userId']: {'peers': sorted(m['uid'] for m in v.get('members', []) if m['uid'] != v['userId'])}
                 for v in docs['teamViews'].values() if v.get('activityId') == a}
+    config = docs.get('learning') or {}
+    learning = {'enabled': settings.get('learningEnabled', True) is not False,
+                'modelId': config.get('activeModelId'), 'b': config.get('b')}
     return {'activity': activity, 'members': members, 'questions': questions, 'applications': applications,
             'draft': draft_from_doc(docs.get('draft') or {}), 'meta': {}, 'preferences': preferences,
-            'published': published, 'publishedMeta': {'seq': version or 0}, 'notified': notified}
+            'published': published, 'publishedMeta': {'seq': version or 0}, 'notified': notified, 'learning': learning}
 
 
 def draft_from_doc(d):
@@ -153,7 +158,7 @@ def settings_doc(patch, state):
         s['requireCommonTime'] = any(r['type'] == 'commonTime' for r in rules)
         s['requiredRoles'] = [{'teamId': r['teamId'], 'optionId': r['role'], 'minimum': r['minimum']}
                               for r in rules if r['type'] == 'requiredRole']
-    for k in ('capacityInitialized', 'settingsVersion'):
+    for k in ('capacityInitialized', 'settingsVersion', 'learningEnabled'):
         if k in patch:
             s[k] = patch[k]
     return s
@@ -257,7 +262,8 @@ class Transaction:
                 'draft': self.one(f'drafts/{a}'),
                 'publication': self.one(f'publications/{a}_v{version}') if version else None,
                 'preferences': list(self.where('placementPreferences', groupId=g, active=True).values()),
-                'teamViews': self.where('teamViews', activityId=a)}
+                'teamViews': self.where('teamViews', activityId=a),
+                'learning': self.one('appConfig/learning')}
         self.loaded = (g, a, build_state(g, a, docs))
         return deepcopy(self.loaded[2])
 

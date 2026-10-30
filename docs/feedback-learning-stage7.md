@@ -1,6 +1,6 @@
 # 7단계: 학습·검증·모델 승인
 
-기준: 편성학습_v3 8·10장, 개발단계 가이드 7단계. 언어 AI는 필요 없다(태그 보조 모델만 데이터 없음으로 건너뜀).
+기준: 편성학습_v4 8·10장, 개발단계 가이드 7단계. 언어 AI는 쓰지 않는다.
 
 ## 학습 (algorithm/learning/train.py, Cloud Run 작업 `python -m learning.train`)
 - 언제: 매월, 또는 마지막 학습 뒤 행이 10개 이상 늘었을 때. `--force`로 즉시.
@@ -14,8 +14,8 @@
 ## 검증 (10장)
 - 기준 1: 평균만 예측, 기준 2: v3 기본 가중치로 계산한 팀 가중 손실 하나만 쓴 회귀. 6단계 행에 활동별 기본 가중치 `weight_*` 열을 추가했다.
 - 후보 조건: 학습 모델의 가중 RMSE가 두 기준보다 모두 5% 이상 낮음. 아니면 `not_better_than_baselines`로 기록만 하고 모델을 만들지 않는다.
-- 보조 모델(보고서 전용): `y_schedule`, `y_roles`, `y_rejoin`, 기준 연결 태그 부정 비율. 태그는 `n_comments ≥ 2` 행만, 부족하면 건너뜀. `b_q > 1.1`인데 연결 태그 모델에서 손실 계수가 0 이하면 `directionMismatches`에 표시.
-- 최근 소모임 3개 재편성 검사는 엔진이 보정 가중치를 받아야 하므로 8단계에서 한다(`reformationCheck: "stage8"`).
+- 보조 모델(보고서 전용): `y_schedule`, `y_roles`, `y_rejoin`.
+- 재편성 검사(8단계에서 구현): 후보가 되면 최근 소모임 3개를 `b`로 다시 편성해 필수 조건·시간을 검사하고, 실패하면 `failed_reformation_check`.
 
 순수 잡음 데이터에서도 80% 구간 때문에 기준 하나쯤은 우연히 "확실"로 나올 수 있다(약 1/5). 그래서 후보 조건(5%)이 최종 관문이고, 테스트로 확인했다.
 
@@ -29,8 +29,8 @@
 되돌리기 = 이전 모델을 다시 activate 하거나 deactivate. 학습 작업은 후보까지만 만들고 절대 적용하지 않는다.
 
 ## 검증 (2026-10-30, 실제 실행)
-- `algorithm/tests/test_train.py` 9개 (순수 7 + 에뮬레이터 2), Python 전체 110개
-- `functions/test/models.emulator.test.js` 4개, functions 에뮬레이터 전체 24개
+- `algorithm/tests/test_train.py` 9개 (순수 7 + 에뮬레이터 2)
+- `functions/test/models.emulator.test.js` 5개 (8단계 확인 1개 포함)
 - 규칙 테스트 16개: 학습 데이터·모델·실행 기록은 임원진도 못 읽음, `appConfig/learning`은 로그인 사용자 읽기
 
 | 가이드 기준 | 테스트 |
@@ -43,5 +43,4 @@
 이 결과는 연결이 작동한다는 확인이지 만족도 개선의 입증이 아니다.
 
 ## 남은 일
-- 8단계: 엔진이 `appConfig/learning.b`로 가중치 보정(순위 유지), 재편성 검사
 - 관리자 화면, Cloud Run 작업·Scheduler 배포, 서비스 관리자 클레임 부여 절차

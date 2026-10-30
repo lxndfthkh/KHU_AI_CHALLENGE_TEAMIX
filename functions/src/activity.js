@@ -1,18 +1,17 @@
 'use strict';
-// Stage 4 (편성학습_v3 1-3, 3장, 4-1) on main's schema: activity start/end, feedback, consent, team summary.
+// Stage 4 (편성학습_v4 1-3, 3장, 4-1) on main's schema: activity start/end, feedback, consent, team summary.
+// Feedback is scores only: free text and language-model tagging were removed in 편성학습_v4.
 // main fields are kept as they are; additions are documented in firestore.schema.json.
 //   activities/{a}: startedAt, endedAt, endedVersion, feedbackClosedAt (main status stays recruiting|closed|active|ended)
-//   feedback/{a}_{uid}: main fields + scores, questionnaireVersion, teamVersion, membershipRatio, learningConsent, commentTags
+//   feedback/{a}_{uid}: main fields (comment unused) + scores, questionnaireVersion, teamVersion, membershipRatio, learningConsent
 //   activities/{a}/feedbackSummary/current: per-team aggregates, only teams with >= MIN_RESPONDENTS
 //   consents/{uid}: learning consent (users/{uid} rules allow only displayName/createdAt/updatedAt)
 const {Timestamp}=require('firebase-admin/firestore');
 const V=require('./validation');
 const {fail,now,requireMember,profile,loadActivity}=require('./common');
 
-const QUESTIONNAIRE='r1', SCORE_KEYS=['overall','schedule','roles','rejoin'];
-const MAX_COMMENT=1000, MIN_RESPONDENTS=3, FEEDBACK_DAYS=7, CONSENT_VERSION='l1';
-const TAGS=['schedule','roles','skill_gap','interest','team_size','communication','participation','atmosphere','other'];
-const SENTIMENTS=['pos','neg','neutral'];
+const QUESTIONNAIRE='r2', SCORE_KEYS=['overall','schedule','roles','rejoin'];
+const MIN_RESPONDENTS=3, FEEDBACK_DAYS=7, CONSENT_VERSION='l2';
 
 async function setLearningConsent(db,uid,d){
   V.check(typeof d.agreed==='boolean','agreed must be boolean');
@@ -76,13 +75,7 @@ function scores(input){
   return Object.fromEntries(SCORE_KEYS.map(k=>[k,input[k]]));
 }
 
-function comment(v){
-  if(v===undefined||v===null)return null;
-  V.check(typeof v==='string'&&v.length<=MAX_COMMENT,`comment up to ${MAX_COMMENT} characters`);
-  return v.trim()||null;
-}
-
-// Officer-visible aggregate. Teams with fewer than MIN_RESPONDENTS respondents are left out entirely.
+// Officer-visible aggregate (score averages only). Teams with fewer than MIN_RESPONDENTS respondents are left out.
 function summarize(feedback){
   const byTeam=new Map();
   for(const f of feedback){if(!byTeam.has(f.teamId))byTeam.set(f.teamId,[]);byTeam.get(f.teamId).push(f);}
@@ -90,10 +83,7 @@ function summarize(feedback){
   for(const [teamId,rows] of byTeam){
     if(rows.length<MIN_RESPONDENTS)continue;
     const averages=Object.fromEntries(SCORE_KEYS.map(k=>[k,Math.round(rows.reduce((s,r)=>s+r.scores[k],0)/rows.length*100)/100]));
-    const tags={};
-    for(const r of rows)if(r.commentTags&&r.commentTags.status==='ok')for(const {tag,sentiment} of r.commentTags.tags){
-      tags[tag]=tags[tag]||{pos:0,neg:0,neutral:0};tags[tag][sentiment]+=1;}
-    teams[teamId]={respondents:rows.length,averages,tags};
+    teams[teamId]={respondents:rows.length,averages};
   }
   return {questionnaireVersion:QUESTIONNAIRE,minRespondents:MIN_RESPONDENTS,teams};
 }
@@ -103,7 +93,8 @@ async function writeSummary(tx,db,a,feedback){
 }
 
 async function submitFeedback(db,uid,d){
-  const s=scores(d.scores),text=comment(d.comment);
+  const s=scores(d.scores);
+  V.check(d.comment===undefined||d.comment===null,'Free-text comments are not collected');
   return db.runTransaction(async tx=>{
     const a=await loadActivity(tx,db,d.activityId);
     await requireMember(tx,db,a.data.groupId,uid);
@@ -117,12 +108,10 @@ async function submitFeedback(db,uid,d){
     const team=ended&&ended.teams.find(t=>t.members.some(m=>m.uid===uid));
     if(!team)fail('permission-denied','종료 시점 팀의 참가자만 후기를 쓸 수 있어요');
     const prev=old.exists?old.data():null;
-    const doc={activityId:a.ref.id,groupId:a.data.groupId,userId:uid,teamId:team.teamId,rating:s.overall,scores:s,comment:text,
+    const doc={activityId:a.ref.id,groupId:a.data.groupId,userId:uid,teamId:team.teamId,rating:s.overall,scores:s,
       questionnaireVersion:QUESTIONNAIRE,teamVersion:a.data.endedVersion,
       membershipRatio:membershipRatio(publications,uid,team.teamId,a.data.startedAt,a.data.endedAt),
       learningConsent:consent.exists&&consent.data().learning?.agreed===true,
-      // A changed comment must be tagged again; unchanged keeps its tags.
-      commentTags:prev&&prev.comment===text?prev.commentTags??null:null,
       createdAt:prev?prev.createdAt:now(),updatedAt:now()};
     tx.set(old.ref,doc);
     const all=others.docs.filter(f=>f.id!==old.ref.id).map(f=>f.data()).concat(doc);
@@ -156,4 +145,4 @@ async function closeExpiredFeedback(db,nowMs=Date.now()){
 }
 
 module.exports={setLearningConsent,startActivity,endActivity,submitFeedback,closeFeedback,closeExpiredFeedback,
-  membershipRatio,summarize,writeSummary,TAGS,SENTIMENTS,MIN_RESPONDENTS,FEEDBACK_DAYS};
+  membershipRatio,summarize,writeSummary,MIN_RESPONDENTS,FEEDBACK_DAYS};
