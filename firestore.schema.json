@@ -249,5 +249,56 @@
       "activities": "re-extraction marker {extractedAt, rowIds, summaryUpdatedAt}"
     },
     "notes": "Server-only (default deny). Written by algorithm/learning/extract.py after feedback closes. No user IDs, answers, private preferences, internal scores or comment text. Included reviews: learningConsent and membershipRatio >= 0.5; rows need >= 2 included reviews and response rate >= 0.5."
+  },
+  "trainingRuns": {
+    "path": "trainingRuns/{runId}",
+    "fields": {
+      "status": "candidate | not_better_than_baselines | insufficient_data",
+      "rowCount": "integer",
+      "activityCount": "integer",
+      "datasetHash": "sha256",
+      "trainerVersion": "tr1",
+      "trainedAt": "timestamp",
+      "datasetId": "fx1",
+      "modelId": "runId if a candidate was created, else null"
+    },
+    "notes": "Server-only (default deny). One per training job run (algorithm/learning/train.py)."
+  },
+  "modelVersions": {
+    "path": "modelVersions/{modelId}",
+    "fields": {
+      "status": "candidate | approved | active | retired",
+      "b": "map criterion -> correction factor 0.5..2.0",
+      "alpha": "Ridge alpha",
+      "coefficients": "standardized coefficients by feature",
+      "featureNames": "list",
+      "scaler": "{mean, scale}",
+      "validation": "{rmse {model, baseline_mean, baseline_weighted_loss}, auxiliary, directionMismatches, reformationCheck}",
+      "bootstrapInterval": "80% interval per criterion",
+      "uncertain": "criteria with b = 1 because the interval contains 0",
+      "rowCount": "integer",
+      "activityCount": "integer",
+      "datasetId": "fx1",
+      "extractorVersion": "fx1",
+      "tagVersion": "ctag1",
+      "trainerVersion": "tr1",
+      "trainedAt": "timestamp",
+      "approvedBy": "uid or null",
+      "approvedAt": "timestamp or null",
+      "activatedAt": "timestamp",
+      "retiredAt": "timestamp",
+      "fileUri": "null (model is stored in this document)"
+    },
+    "notes": "Server-only (default deny). Created as candidate by training; approve/activate/deactivate by a service admin (custom claim admin: true) via functions/src/models.js. Exactly one active."
+  },
+  "appConfigLearning": {
+    "path": "appConfig/learning",
+    "fields": {
+      "activeModelId": "modelId or null (null = default weights)",
+      "b": "correction factors of the active model or null",
+      "activatedAt": "timestamp",
+      "activatedBy": "uid"
+    },
+    "notes": "Signed-in read (existing appConfig rule), server write. Read by the formation engine in stage 8."
   }
 }

@@ -105,6 +105,7 @@ class ExtractTests(unittest.TestCase):
         row = rows_for(self.store, [review(u, 'team_1') for u in self.t1])['a_v1_team_1']
         self.assertEqual((row['active_time'], row['loss_time'], row['commonSlotCount']), (0, 0.0, 0))
         self.assertEqual((row['active_role'], row['active_size']), (1, 1))
+        self.assertEqual((row['weight_role'], row['weight_size'], row['weight_time']), (2, 1, 0))
         self.assertEqual((row['republishCount'], row['teamCount'], row['teamSize'], row['formationMode']), (0, 2, 3, 'balanced'))
 
 

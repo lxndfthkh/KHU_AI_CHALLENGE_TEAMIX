@@ -32,7 +32,10 @@ def included(review):
 
 def build_rows(activity_id, activity, settings, publication, feedback):
     """Pure: main documents -> {rowId: row}. Rows below the inclusion thresholds are left out."""
-    used = set(settings.get('priority') or []) | {'size'}
+    priority = list(settings.get('priority') or [])
+    used = set(priority) | {'size'}
+    # v3 default weights w = m - r + 1 (편성알고리즘_v3 5장); baseline 2 of 편성학습_v3 10장 needs them.
+    default_w = {q: len(priority) - r for r, q in enumerate(priority)}
     method = settings.get('method')
     teams = publication.get('teams', [])
     rows = {}
@@ -48,6 +51,7 @@ def build_rows(activity_id, activity, settings, publication, feedback):
         for q in CRITERIA:
             row[f'active_{q}'] = int(q in used)
             row[f'loss_{q}'] = losses[q] / 1000 if q in used and losses.get(q) is not None else 0.0
+            row[f'weight_{q}'] = default_w.get(q, 0)
         row['commonSlotCount'] = len(team.get('commonTimes') or []) if 'time' in used else 0
         row['manuallyEdited'] = bool(publication.get('manuallyEdited'))
         row['republishCount'] = publication['version'] - 1

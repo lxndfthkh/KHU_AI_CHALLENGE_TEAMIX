@@ -1,5 +1,5 @@
 'use strict';
-// Stage 1-2 and 4-5 callables. Names match docs/FIRESTORE.md; logic lives in commands.js, activity.js, tagging.js.
+// Stage 1-2, 4-5 and 7 callables. Names match docs/FIRESTORE.md; logic lives in commands.js, activity.js, tagging.js, models.js.
 // Formation commands (closeRecruitment, generateDraft, moveMember, publishTeams) are served by algorithm/server_v3.py.
 const {initializeApp}=require('firebase-admin/app');
 const {getFirestore}=require('firebase-admin/firestore');
@@ -12,13 +12,14 @@ const {CommandError}=require('./common');
 const C=require('./commands');
 const A=require('./activity');
 const T=require('./tagging');
+const M=require('./models');
 initializeApp();
 const db=getFirestore();
 const region='asia-northeast3';
 
 const callable=fn=>onCall({region},async req=>{
   if(!req.auth)throw new HttpsError('unauthenticated','로그인이 필요해요');
-  try{return await fn(db,req.auth.uid,req.data||{});}
+  try{return await fn(db,req.auth.uid,req.data||{},req.auth.token);}
   catch(e){
     if(e instanceof V.ValidationError)throw new HttpsError('invalid-argument',e.message);
     if(e instanceof CommandError)throw new HttpsError(e.code,e.message);
@@ -32,6 +33,8 @@ for(const name of ['createGroup','issueInvitation','previewInvitation','requestJ
   'createActivity','submitRegistration','updateRegistration','cancelRegistration',
   'setPlacementPreference','revokePlacementPreference'])exports[name]=callable(C[name]);
 for(const name of ['setLearningConsent','startActivity','endActivity','submitFeedback','closeFeedback'])exports[name]=callable(A[name]);
+// Service admin only (custom claim admin: true), checked inside each command.
+for(const name of ['approveModel','activateModel','deactivateModel'])exports[name]=callable(M[name]);
 
 exports.closeExpiredFeedback=onSchedule({region,schedule:'every 60 minutes'},async()=>{
   const closed=await A.closeExpiredFeedback(db);
