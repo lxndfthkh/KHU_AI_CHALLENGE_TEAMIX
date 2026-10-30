@@ -4,7 +4,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 
-/// Canonical main schema. This asynchronous boundary does not replace demo UI.
+/// Stage 1-2 server commands on main's schema (docs/FIRESTORE.md). Does not replace demo UI.
 class FeedbackLearningApi {
   FeedbackLearningApi({FirebaseAuth? auth, FirebaseFirestore? firestore,
     http.Client? client, Uri? functionsBase})
@@ -44,28 +44,43 @@ class FeedbackLearningApi {
     }
     return Map<String, dynamic>.from(result);
   }
-  Future<Map<String, dynamic>> initializeProfile(String nickname, String termsVersion) =>
-    call('initializeProfile', {'nickname': nickname, 'termsVersion': termsVersion, 'termsAgreed': true});
-  Future<Map<String, dynamic>> setLearningConsent(bool agreed) => call('setLearningConsent', {'agreed': agreed});
-  Future<Map<String, dynamic>> createGroup(String name, String description) => call('createGroup', {'name': name, 'description': description});
-  Future<Map<String, dynamic>> previewInvite(String code) => call('previewInvite', {'inviteCode': code.trim().toUpperCase()});
-  Future<Map<String, dynamic>> requestJoin(String groupId, String code) => call('requestJoin', {'groupId': groupId, 'inviteCode': code.trim().toUpperCase()});
-  Future<Map<String, dynamic>> decideJoin(String groupId, String uid, bool approve) => call('decideJoin', {'groupId': groupId, 'uid': uid, 'approve': approve});
-  Future<Map<String, dynamic>> listMyGroups() => call('listMyGroups', {});
-  /// activity contains title/description/goal/recruitmentCapacity/deadline,
-  /// questions and matchingSettings, exactly as in main's activity model.
-  Future<Map<String, dynamic>> createActivity(String groupId, Map<String, dynamic> activity) => call('createActivity', {...activity, 'groupId': groupId});
-  Future<Map<String, dynamic>> updateSettings(String groupId, String activityId, int expected, Map<String, dynamic> activity) => call('updateActivitySettings', {...activity, 'groupId': groupId, 'activityId': activityId, 'expectedSettingsVersion': expected});
-  /// Raw answers, e.g. role: '개발', time: ['수 저녁'], experience: 3.
-  Future<Map<String, dynamic>> submitApplication(String groupId, String activityId, Map<String, dynamic> answers) => call('submitApplication', {'groupId': groupId, 'activityId': activityId, 'answers': answers});
-  Future<Map<String, dynamic>> withdrawApplication(String groupId, String activityId) => call('withdrawApplication', {'groupId': groupId, 'activityId': activityId});
-  /// Preferences are group-scoped, not activity-scoped.
-  Future<Map<String, dynamic>> setPreference(String groupId, String targetUid, {required bool confirmed}) => call('setPrivatePreference', {'groupId': groupId, 'targetUid': targetUid, 'confirmed': confirmed});
-  Future<Map<String, dynamic>> withdrawPreference(String groupId, String targetUid) => call('withdrawPrivatePreference', {'groupId': groupId, 'targetUid': targetUid});
-  Stream<DocumentSnapshot<Map<String, dynamic>>> ownPreferences(String groupId) {
+  // Stage 1-2 commands (functions/src/commands.js); names match docs/FIRESTORE.md.
+  // The profile (users/{uid}: displayName, createdAt, updatedAt) is written directly; rules allow it.
+  Future<Map<String, dynamic>> createGroup(String name, {String description = '', String? themeColor}) =>
+    call('createGroup', {'name': name, 'description': description, 'themeColor': ?themeColor});
+  Future<Map<String, dynamic>> issueInvitation(String groupId, {int? expiresInDays}) =>
+    call('issueInvitation', {'groupId': groupId, 'expiresInDays': ?expiresInDays});
+  /// Pass the code from a link or typed by hand; or a groupId you already asked to join.
+  Future<Map<String, dynamic>> previewInvitation({String? code, String? groupId}) =>
+    call('previewInvitation', {'code': ?code, 'groupId': ?groupId});
+  Future<Map<String, dynamic>> requestJoin(String code) => call('requestJoin', {'code': code});
+  Future<Map<String, dynamic>> approveJoin(String groupId, String userId) =>
+    call('approveJoin', {'groupId': groupId, 'userId': userId});
+  Future<Map<String, dynamic>> rejectJoin(String groupId, String userId) =>
+    call('rejectJoin', {'groupId': groupId, 'userId': userId});
+  /// activity: title, description, capacity, targetTeamSize, deadlineAt (ms), themeColor?,
+  /// questions [{id, label, type: single|multiple|scale, options [{id, label}], required?, enabled?}],
+  /// matching {method, questionCriteria {questionId: role|time|experience|interest}, priority?, requireCommonTime?}.
+  Future<Map<String, dynamic>> createActivity(String groupId, Map<String, dynamic> activity) =>
+    call('createActivity', {...activity, 'groupId': groupId});
+  /// answers keyed by question ID: option ID, list of option IDs, or 1-5.
+  Future<Map<String, dynamic>> submitRegistration(String activityId, Map<String, dynamic> answers) =>
+    call('submitRegistration', {'activityId': activityId, 'answers': answers});
+  Future<Map<String, dynamic>> updateRegistration(String activityId, Map<String, dynamic> answers) =>
+    call('updateRegistration', {'activityId': activityId, 'answers': answers});
+  Future<Map<String, dynamic>> cancelRegistration(String activityId) =>
+    call('cancelRegistration', {'activityId': activityId});
+  /// Group-scoped and private: never shown to officers. At most two active.
+  Future<Map<String, dynamic>> setPlacementPreference(String groupId, String targetUserId) =>
+    call('setPlacementPreference', {'groupId': groupId, 'targetUserId': targetUserId, 'confirmed': true});
+  Future<Map<String, dynamic>> revokePlacementPreference(String groupId, String targetUserId) =>
+    call('revokePlacementPreference', {'groupId': groupId, 'targetUserId': targetUserId});
+  /// Own preferences only; firestore.rules allow the author to read them.
+  Stream<QuerySnapshot<Map<String, dynamic>>> ownPreferences(String groupId) {
     final uid = _auth.currentUser?.uid;
     if (uid == null) throw StateError('로그인이 필요해요');
-    return _db.collection('privatePreferences').doc(uid).collection('groups').doc(groupId).snapshots();
+    return _db.collection('placementPreferences').where('groupId', isEqualTo: groupId)
+      .where('userId', isEqualTo: uid).where('active', isEqualTo: true).snapshots();
   }
   void dispose() { if (_ownsClient) _client.close(); }
 }

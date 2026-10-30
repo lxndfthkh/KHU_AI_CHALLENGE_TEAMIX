@@ -1,54 +1,90 @@
 'use strict';
+// Input validation for main's schema (docs/FIRESTORE.md, firestore.schema.json). Pure; no Firestore.
 class ValidationError extends Error {}
 function check(ok,message){if(!ok)throw new ValidationError(message);}
-function text(v,max=120){check(typeof v==='string'&&v.trim().length>0&&v.length<=max,'Invalid text');return v.trim();}
-function id(v){check(typeof v==='string'&&/^[A-Za-z0-9_-]{1,128}$/.test(v),'Invalid ID');return v;}
 function plain(v){return v!==null&&typeof v==='object'&&!Array.isArray(v);}
-function uniqueStrings(v){return Array.isArray(v)&&v.length<=30&&new Set(v).size===v.length&&v.every(s=>typeof s==='string'&&s.length>0&&s.length<=120);}
-function questions(q){
-  check(plain(q),'Questions required');
-  check(Object.keys(q).every(k=>['selected','roleOptions','timeOptions','interestOptions'].includes(k)),'Unknown question field');
-  check(Array.isArray(q.selected)&&q.selected.length<=4&&new Set(q.selected).size===q.selected.length&&q.selected.every(k=>['role','time','experience','interest'].includes(k)),'Invalid selected questions');
-  for(const key of ['role','time','interest']){
-    check(uniqueStrings(q[key+'Options']),'Invalid options');
-    check(!q.selected.includes(key)||q[key+'Options'].length>0,'Selected question needs options');
+function text(v,max=120){check(typeof v==='string'&&v.trim().length>0&&v.length<=max,'Invalid text');return v.trim();}
+function optionalText(v,max){if(v===undefined||v===null)return '';check(typeof v==='string'&&v.length<=max,'Invalid text');return v;}
+function id(v){check(typeof v==='string'&&/^[A-Za-z0-9_-]{1,128}$/.test(v),'Invalid ID');return v;}
+function noUnderscore(v){check(!id(v).includes('_'),'ID must not contain _');return v;}
+const COLORS=['mint','peach','lilac'];
+function color(v,fallback){if(v===undefined||v===null)return fallback;check(COLORS.includes(v),'Invalid theme color');return v;}
+function posInt(v,max){check(Number.isInteger(v)&&v>0&&v<=max,'Invalid positive integer');return v;}
+
+// Matching engine criteria and the question type each requires (algorithm/repository.py CRITERIA).
+const CRITERIA={role:'single',time:'multiple',interest:'multiple',experience:'scale'};
+const TYPES=['single','multiple','scale'];
+
+function question(q,order){
+  check(plain(q),'Question required');
+  check(Object.keys(q).every(k=>['id','label','type','options','required','enabled'].includes(k)),'Unknown question field');
+  const qid=id(q.id);check(/^[a-z0-9]{1,32}$/.test(qid),'Question ID must be lowercase letters/digits');
+  check(TYPES.includes(q.type),'Invalid question type');
+  let options=[];
+  if(q.type==='scale')check(q.options===undefined||(Array.isArray(q.options)&&q.options.length===0),'Scale questions use 1-5 without options');
+  else{
+    check(Array.isArray(q.options)&&q.options.length>0&&q.options.length<=30,'Choice questions need 1-30 options');
+    options=q.options.map(o=>{check(plain(o)&&Object.keys(o).every(k=>['id','label'].includes(k)),'Invalid option');
+      check(typeof o.id==='string'&&/^[a-z0-9]{1,32}$/.test(o.id),'Option ID must be lowercase letters/digits');return {id:o.id,label:text(o.label,60)};});
+    check(new Set(options.map(o=>o.id)).size===options.length,'Duplicate option ID');
   }
-  return {selected:[...q.selected],roleOptions:[...q.roleOptions],timeOptions:[...q.timeOptions],interestOptions:[...q.interestOptions]};
+  return {id:qid,label:text(q.label,120),type:q.type,options,required:q.required!==false,order,enabled:q.enabled!==false};
 }
-function matching(s,q){
-  check(plain(s),'Matching settings required');
-  check(Object.keys(s).every(k=>['teamCount','teamCapacities','method','priority','requireCommonTime','fixed','requiredRoles'].includes(k)),'Unknown matching field');
-  check(Number.isInteger(s.teamCount)&&s.teamCount>0&&s.teamCount<=100,'Invalid team count');
-  check(Array.isArray(s.teamCapacities)&&s.teamCapacities.length===s.teamCount&&s.teamCapacities.every(v=>v===null||(Number.isInteger(v)&&v>0&&v<=10000)),'Invalid capacities');
-  check(['balanced','similar'].includes(s.method),'Invalid method');
-  const expected=[...q.selected,'size'];
-  check(Array.isArray(s.priority)&&s.priority.length===expected.length&&new Set(s.priority).size===expected.length&&s.priority.every(k=>expected.includes(k)),'Priority must match selected questions plus size');
-  check(typeof s.requireCommonTime==='boolean'&&(!s.requireCommonTime||q.selected.includes('time')),'Common-time requires time question');
-  check((s.fixed===undefined||(Array.isArray(s.fixed)&&s.fixed.length===0))&&(s.requiredRoles===undefined||(Array.isArray(s.requiredRoles)&&s.requiredRoles.length===0)),'Hard constraints require stage 3');
-  return {teamCount:s.teamCount,teamCapacities:[...s.teamCapacities],method:s.method,priority:[...s.priority],requireCommonTime:s.requireCommonTime};
-}
-function mainActivity(d){
+
+function activity(d){
   check(plain(d),'Activity required');
-  const q=questions(d.questions),m=matching(d.matchingSettings,q);
-  const deadline=typeof d.deadline==='string'?Date.parse(d.deadline):d.deadline;
+  const questions=(()=>{check(Array.isArray(d.questions)&&d.questions.length<=20,'Up to 20 questions');return d.questions.map((q,i)=>question(q,i+1));})();
+  check(new Set(questions.map(q=>q.id)).size===questions.length,'Duplicate question ID');
+  const deadline=typeof d.deadlineAt==='string'?Date.parse(d.deadlineAt):d.deadlineAt;
   check(Number.isSafeInteger(deadline)&&deadline>Date.now(),'Future deadline required');
-  check(Number.isInteger(d.recruitmentCapacity)&&d.recruitmentCapacity>0&&d.recruitmentCapacity<=100,'Invalid recruitment capacity');
-  check(typeof d.description==='string'&&d.description.length<=5000,'Invalid description');
-  check(typeof d.goal==='string'&&d.goal.length<=2000,'Invalid goal');
-  return {title:text(d.title),description:d.description,goal:d.goal,recruitmentCapacity:d.recruitmentCapacity,deadline,questions:q,matchingSettings:m};
+  return {title:text(d.title,120),description:optionalText(d.description,5000),capacity:posInt(d.capacity,500),
+    targetTeamSize:posInt(d.targetTeamSize,50),deadlineAt:deadline,questions,matching:matching(d.matching,questions)};
 }
-function mainAnswers(input,q){
-  check(plain(input),'Answers required');
-  check(Object.keys(input).length===q.selected.length&&Object.keys(input).every(k=>q.selected.includes(k)),'Only selected questions are accepted');
-  const result={};
-  for(const key of q.selected){
-    const v=input[key];
-    if(key==='experience')check(Number.isInteger(v)&&v>=1&&v<=5,'Experience must be 1-5');
-    else if(key==='role')check(typeof v==='string'&&q.roleOptions.includes(v),'Invalid role');
-    else check(Array.isArray(v)&&v.length>0&&new Set(v).size===v.length&&v.every(x=>q[key+'Options'].includes(x)),'Invalid selected options');
-    result[key]=Array.isArray(v)?[...v]:v;
+
+function matching(m,questions){
+  check(plain(m),'Matching settings required');
+  check(Object.keys(m).every(k=>['method','questionCriteria','priority','requireCommonTime'].includes(k)),'Unknown matching field');
+  check(['balanced','similar'].includes(m.method),'Invalid method');
+  check(plain(m.questionCriteria),'questionCriteria required');
+  const byId=new Map(questions.map(q=>[q.id,q])),used=new Set();
+  for(const [qid,criterion] of Object.entries(m.questionCriteria)){
+    const q=byId.get(qid);
+    check(q&&q.enabled,'Matching question must exist and be enabled');
+    check(CRITERIA[criterion]===q.type,`${criterion} needs a ${CRITERIA[criterion]} question`);
+    check(q.required,'Matching questions must be required');
+    check(!used.has(criterion),'Each criterion maps to one question');used.add(criterion);
   }
-  return result;
+  const enabledQuestionIds=questions.filter(q=>q.id in m.questionCriteria).map(q=>q.id);
+  const expected=[...used,'size'];
+  const priority=m.priority===undefined?[...enabledQuestionIds.map(q=>m.questionCriteria[q]),'size']:m.priority;
+  check(Array.isArray(priority)&&priority.length===expected.length&&new Set(priority).size===expected.length&&priority.every(k=>expected.includes(k)),'Priority must list mapped criteria plus size once each');
+  const requireCommonTime=m.requireCommonTime===true;
+  check(m.requireCommonTime===undefined||typeof m.requireCommonTime==='boolean','requireCommonTime must be boolean');
+  check(!requireCommonTime||used.has('time'),'Common time requires a time question');
+  return {method:m.method,enabledQuestionIds,questionCriteria:{...m.questionCriteria},priority:[...priority],requireCommonTime,requiredRoles:[]};
 }
-function canAddPreference(targets,target){check(targets.includes(target)||targets.length<2,'At most two group preferences');}
-module.exports={ValidationError,check,text,id,questions,matching,mainActivity,mainAnswers,canAddPreference};
+
+// answers keyed by question ID; questions = enabled question docs ({id,type,options,required}).
+function answers(input,questions){
+  check(plain(input),'Answers required');
+  const byId=new Map(questions.filter(q=>q.enabled).map(q=>[q.id,q])),out={};
+  check(Object.keys(input).every(k=>byId.has(k)),'Unknown question');
+  for(const q of byId.values()){
+    const v=input[q.id];
+    if(v===undefined||v===null){check(!q.required,`Answer required: ${q.id}`);continue;}
+    const ids=q.options.map(o=>o.id);
+    if(q.type==='scale')check(Number.isInteger(v)&&v>=1&&v<=5,'Scale answers are 1-5');
+    else if(q.type==='single')check(typeof v==='string'&&ids.includes(v),'Invalid option');
+    else check(Array.isArray(v)&&v.length>0&&new Set(v).size===v.length&&v.every(x=>ids.includes(x)),'Invalid options');
+    out[q.id]=Array.isArray(v)?[...v]:v;
+  }
+  return out;
+}
+
+// Invitation codes: shown to people and embedded in links. Stored only as SHA-256.
+const CODE_ALPHABET='ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+function inviteCode(v){check(typeof v==='string','Invalid invite code');const c=v.trim().toUpperCase();
+  check(/^[A-HJ-NP-Z2-9]{10}$/.test(c),'Invalid invite code');return c;}
+
+const MAX_PREFERENCES=2;
+module.exports={ValidationError,check,plain,text,optionalText,id,noUnderscore,color,activity,matching,answers,inviteCode,CODE_ALPHABET,MAX_PREFERENCES,CRITERIA};
