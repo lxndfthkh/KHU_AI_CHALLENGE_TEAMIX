@@ -34,18 +34,20 @@
       "createdAt": "timestamp",
       "updatedAt": "timestamp"
     },
-    "notes": "Authoritative per-group role. Server creates/approves; no self escalation. No private email or survey answers."
+    "notes": "Authoritative per-group role. Created by the group-creation batch or an invite-code join request (pending); an admin moves pending to approved/rejected. No self escalation. No private email or survey answers."
   },
   "invitations": {
-    "path": "invitations/{tokenHash}",
+    "path": "invitations/{code}",
     "fields": {
       "groupId": "id",
-      "expiresAt": "timestamp",
+      "groupName": "copy of groups.name at issue time",
+      "description": "copy of groups.description at issue time",
+      "expiresAt": "timestamp, at most 7 days after issue",
       "active": "boolean",
       "createdBy": "uid",
       "createdAt": "timestamp"
     },
-    "notes": "Server validates token and returns only name, description, member count for preview. Rate limit lookup. Never expose token hash list."
+    "notes": "Document ID is the 8-char code [A-HJ-NP-Z2-9]. Only a group admin creates; anyone signed in may get a live code they know, never list. Holds only the preview fields (name, description)."
   },
   "activities": {
     "path": "activities/{activityId}",

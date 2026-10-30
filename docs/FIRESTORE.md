@@ -8,7 +8,7 @@
 - `_schema/*`: 관리용 데이터 구조 설명. 실제 사용자나 모임이 아님. 클라이언트 접근 불가.
 - 상세 필드는 `firestore.schema.json` 참조.
 - Firestore는 스키마를 강제 생성하는 테이블 DB가 아니다. 실제 사용자·모임 컬렉션은 첫 유효 데이터 저장 때 생긴다.
-- 앱 연결: 로그인 시 `users/{uid}` 생성, 내 모임 홈 조회, 모임 만들기(아래 '서버 없이 처리하는 명령'). 나머지 서버 비즈니스 로직은 아직 없다.
+- 앱 연결: 로그인 시 `users/{uid}` 생성, 내 모임 홈 조회, 모임 만들기, 초대 코드 발급·참여 요청, 가입 승인·거절(아래 '서버 없이 처리하는 명령'). 소모임·편성 등 나머지 서버 비즈니스 로직은 아직 없다.
 
 ## 확정 기준
 - `targetTeamSize`: 소모임을 만들 때 입력받는 팀당 목표 인원. 별도 팀 수 입력을 요구하지 않는다.
@@ -31,10 +31,12 @@
 
 ### 서버 없이 처리하는 명령 (무료 Spark 요금제 시뮬레이터용)
 - createGroup: 앱이 `groups/{id}`와 `memberships/{id}_{uid}`(role admin, status approved)를 한 배치로 쓴다. 규칙이 서로의 존재(existsAfter/getAfter), 본인 uid, 정해진 필드·길이, 새 모임 여부를 검사하므로 기존 모임에 자신을 운영진으로 넣을 수 없다. 구현: `lib/data/firestore_group_writer.dart`. Cloud Functions를 쓰게 되면 이 규칙을 지우고 서버 명령으로 옮긴다.
+- issueInvitation: 운영진이 `invitations/{코드}`를 만든다. 코드는 8자리(헷갈리는 I·O·0·1 제외), 만료는 7일 이내, 모임 이름·소개는 `groups` 값과 같아야 한다. 운영진은 `active: false`로 끌 수 있다.
+- previewInvitation: 로그인 사용자가 아는 코드 문서 하나를 `get`한다. 목록 조회는 막혀 있어 코드를 훑어볼 수 없다. 만료·비활성 코드는 거절된다. 인원 수는 서버 없이 유지할 수 없어 보여주지 않는다.
+- requestJoin: 앱이 `memberships/{groupId}_{uid}`를 role member, status pending, `invitationId`(코드)와 함께 만든다. 규칙이 코드의 모임·유효 기간을 확인한다. 문서가 이미 있으면(가입·대기·거절) 덮어쓸 수 없다. 대기 중에는 모임을 읽을 수 없어 홈 카드 이름은 초대 문서에서 가져온다.
+- 구현: `lib/data/firestore_invitations.dart`.
+- approveJoin / rejectJoin: 그 모임 운영진이 pending 멤버십의 status를 approved 또는 rejected로 바꾼다. 바뀌는 필드는 status와 updatedAt(서버 시각)뿐이고, 이미 결정된 요청은 다시 바꿀 수 없다. 운영진은 (groupId, status, createdAt) 인덱스로 대기 목록을 조회한다. 구현: `lib/data/firestore_join_requests.dart`. 알림(notifications)은 아직 만들지 않는다. 신청자 홈은 실시간 구독으로 바로 바뀐다.
 
-- issueInvitation / previewInvitation: 초대 토큰 발급·만료 검사·최소 정보 반환. 조회 속도 제한.
-- requestJoin: 유효 초대 검사 후 pending/member 생성. 동일 요청 중복 방지.
-- approveJoin / rejectJoin: 해당 그룹 admin 확인 후 전이 및 알림 생성.
 - createActivity: admin 확인, 양의 capacity/targetTeamSize와 deadline 검증. 질문과 설정을 함께 저장.
 - submitRegistration / updateRegistration / cancelRegistration: 트랜잭션에서 승인 회원·상태·서버 시간·정원 검증. 처음 제출할 때만 인원 증가. 질문 구조는 첫 제출 후 영구 잠금.
 - closeRecruitment: admin 확인, 상태 전이. 자동 마감 작업이 늦어져도 제출 서버가 deadline을 검사.

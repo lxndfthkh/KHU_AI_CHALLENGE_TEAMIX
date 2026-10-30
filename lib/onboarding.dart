@@ -5,6 +5,8 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'data/demo_group_repository.dart';
 import 'data/firestore_group_writer.dart';
 import 'data/firestore_groups_source.dart';
+import 'data/firestore_invitations.dart';
+import 'data/group_admin.dart';
 import 'data/group_repository.dart';
 import 'data/user_profile.dart';
 import 'models/group_summary.dart';
@@ -21,8 +23,8 @@ import 'widgets/onboarding_widgets.dart';
 
 export 'theme.dart' show ink, coral, mint, butter, lilac;
 
-// Auth, the groups home and group creation are real; invite/join flows stay
-// in-memory demos until the server commands in docs/FIRESTORE.md exist.
+// Auth, the groups home, group creation, invite codes and join approval are
+// real; subgroups and team formation still use demo data.
 class TeamixApp extends StatelessWidget {
   const TeamixApp({
     super.key,
@@ -78,6 +80,10 @@ class _EntryScreenState extends State<EntryScreen> {
       other = TextEditingController();
 
   bool terms = false, privacy = false, busy = false;
+
+  // Firestore invite flow: the code being joined, and the group just created.
+  InvitationPreview? invitation;
+  String? createdGroupId, shareCode;
 
   final categories = <String>{};
 
@@ -198,10 +204,92 @@ class _EntryScreenState extends State<EntryScreen> {
 
   void clearInvite() {
     invite = '';
+    invitation = null;
     code.clear();
   }
 
+  GroupAdmin? get groupAdmin {
+    final user = firestoreUser;
+    return user == null
+        ? null
+        : FirestoreGroupAdmin(FirebaseFirestore.instance, user.uid);
+  }
+
+  Future<void> issueShareCode() async {
+    final groupId = createdGroupId;
+    if (groupId == null || busy) return;
+    setState(() => busy = true);
+    try {
+      final issued = await groupAdmin!.issueInvitation(groupId);
+      if (mounted) setState(() => shareCode = issued);
+    } catch (_) {
+      if (mounted) toast('초대 코드를 만들지 못했어요. 잠시 후 다시 시도해 주세요.');
+    } finally {
+      if (mounted) setState(() => busy = false);
+    }
+  }
+
+  Future<void> checkFirestoreInvite(User user) async {
+    if (busy) return;
+    setState(() => busy = true);
+    try {
+      final db = FirebaseFirestore.instance;
+      final found = await findInvitation(db, invite);
+      if (found == null) {
+        notice = '초대가 만료되었거나 올바르지 않아요.';
+      } else {
+        group = found.groupName;
+        final status = await myMembershipStatus(
+          db,
+          uid: user.uid,
+          groupId: found.groupId,
+        );
+        if (status == null) {
+          invitation = found;
+          go('preview');
+          return;
+        }
+        notice = switch (status) {
+          'pending' => '이미 요청했어요. 운영진 승인을 기다려 주세요.',
+          'approved' => '이미 가입한 모임이에요.',
+          _ => '이전 요청이 처리된 모임이에요. 운영진에게 문의해 주세요.',
+        };
+      }
+    } catch (_) {
+      notice = '초대 코드를 확인하지 못했어요. 다시 시도해 주세요.';
+    } finally {
+      if (mounted) setState(() => busy = false);
+    }
+    clearInvite();
+    go('notice');
+  }
+
+  Future<void> sendJoinRequest(User user, InvitationPreview found) async {
+    if (busy) return;
+    setState(() => busy = true);
+    try {
+      await requestJoin(
+        FirebaseFirestore.instance,
+        uid: user.uid,
+        displayName: profileName(user),
+        invitation: found,
+      );
+      notice = '참여 요청을 보냈어요. 승인 대기 중입니다.';
+    } catch (_) {
+      notice = '참여 요청을 보내지 못했어요. 초대 코드가 만료됐을 수 있어요.';
+    } finally {
+      if (mounted) setState(() => busy = false);
+    }
+    clearInvite();
+    go('notice');
+  }
+
   void checkInvite() {
+    final user = firestoreUser;
+    if (user != null) {
+      checkFirestoreInvite(user);
+      return;
+    }
     final value = invite.trim().toUpperCase();
     group = groupRepository.invitedGroupName;
 
@@ -383,7 +471,7 @@ class _EntryScreenState extends State<EntryScreen> {
       if (busy) return;
       setState(() => busy = true);
       try {
-        await createGroupInFirestore(
+        createdGroupId = await createGroupInFirestore(
           FirebaseFirestore.instance,
           uid: user.uid,
           displayName: profileName(user),
@@ -398,6 +486,7 @@ class _EntryScreenState extends State<EntryScreen> {
         intro.clear();
         other.clear();
         categories.clear();
+        shareCode = null;
         go('share');
       } catch (_) {
         if (mounted) toast('모임을 만들지 못했어요. 잠시 후 다시 시도해 주세요.');
@@ -476,12 +565,20 @@ class _EntryScreenState extends State<EntryScreen> {
             clearInvite();
             go('boundary');
           },
+          demo: firestoreUser == null,
         );
       case 'preview':
+        final user = firestoreUser, found = invitation;
         return buildGroupPreviewContent(
           ui: ui,
           group: group,
+          description: found?.description,
+          demo: user == null,
           onRequest: () {
+            if (user != null && found != null) {
+              sendJoinRequest(user, found);
+              return;
+            }
             groupRepository.requestMembership(group);
             clearInvite();
             notice = '참여 요청을 보냈어요. 승인 대기 중입니다.';
@@ -514,6 +611,8 @@ class _EntryScreenState extends State<EntryScreen> {
           ui: ui,
           group: group,
           demo: firestoreUser == null,
+          inviteCode: shareCode,
+          onIssueInvite: createdGroupId == null ? null : issueShareCode,
           onSkip: () => go('boundary'),
         );
       default:
@@ -552,12 +651,10 @@ class _EntryScreenState extends State<EntryScreen> {
             demoMode: widget.demoMode,
             busy: busy,
             onCreateGroup: () => go('create'),
-            // Joining needs server commands; only the demo writes it.
-            onJoinGroup: uid == null
-                ? () => go('invite')
-                : () => toast('모임 참가는 서버 기능 연결 후 사용할 수 있어요.'),
+            onJoinGroup: () => go('invite'),
             onSignOut: signOut,
             onToggleDemoGroups: toggleDemoGroups,
+            groupAdmin: uid == null ? null : groupAdmin,
           );
 
       content = uid == null
@@ -595,7 +692,7 @@ class _EntryScreenState extends State<EntryScreen> {
                 children: [
                   OnboardingWidgets(busy: busy).panel(lilac, [
                     const Text(
-                      '개발용 · 인증, 내 모임 목록, 모임 만들기는 실제 연결. 초대·참여 요청은 메모리 시연이며 새로고침 시 초기화됩니다.',
+                      '개발용 · 인증, 내 모임 목록, 모임 만들기, 초대 코드 참여, 가입 승인은 실제 연결. 소모임·팀 편성은 시연 데이터예요.',
                       style: TextStyle(fontSize: 12),
                     ),
                   ]),

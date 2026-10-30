@@ -26,6 +26,7 @@ class FirestoreGroupsSource {
 
   Future<GroupSummary> _summary(Map<String, dynamic> membership) async {
     final groupId = membership['groupId'];
+    if (membership['status'] == 'pending') return _pendingSummary(membership);
     if (membership['status'] != 'approved' || groupId is! String) {
       return GroupSummary.fromFirestore(uid: uid, membership: membership);
     }
@@ -55,5 +56,24 @@ class FirestoreGroupsSource {
       // One unreadable group (e.g. approval just revoked) shouldn't hide the rest.
       return GroupSummary.fromFirestore(uid: uid, membership: membership);
     }
+  }
+
+  /// Pending members can't read the group; the invite they used carries its
+  /// name until the code expires.
+  Future<GroupSummary> _pendingSummary(Map<String, dynamic> membership) async {
+    final code = membership['invitationId'];
+    Map<String, dynamic>? invitation;
+    if (code is String) {
+      try {
+        invitation = (await _db.doc('invitations/$code').get()).data();
+      } on FirebaseException {
+        invitation = null;
+      }
+    }
+    return GroupSummary.fromFirestore(
+      uid: uid,
+      membership: membership,
+      group: invitation == null ? null : {'name': invitation['groupName']},
+    );
   }
 }
