@@ -76,8 +76,20 @@ class FakeFormation implements FormationBackend {
   final calls = <String>[];
   List<String> problems = const [];
 
+  FormationDraft? _shown;
+
+  /// Bump to simulate a sign-up or cancellation after the operator reviewed.
+  int roster = 1;
+
   @override
-  Stream<FormationDraft?> draft(String activityId) => draftStream.stream;
+  Stream<FormationDraft?> draft(String activityId) =>
+      draftStream.stream.map((d) => _shown = d);
+  @override
+  Future<Map<String, Object>> reviewVersions(String g, String a) async => {
+    'roster': roster,
+    'settings': 1,
+    'draft': _shown?.version ?? 0,
+  };
   @override
   Future<Map<String, String>> memberNames(String groupId) async => {
     'u1': '가나',
@@ -115,7 +127,15 @@ class FakeFormation implements FormationBackend {
   }
 
   @override
-  Future<FormationOutcome> publish(String g, String a) async {
+  Future<FormationOutcome> publish(
+    String g,
+    String a, {
+    required Map<String, Object> reviewed,
+  }) async {
+    if (reviewed['roster'] != roster) {
+      calls.add('publish stale');
+      return ServerFormationBackend.reviewedStale;
+    }
     calls.add('publish');
     return const FormationOutcome(true, '팀을 공개했어요.');
   }
@@ -234,6 +254,28 @@ void main() {
     await tester.pumpAndSettle();
     expect(backend.calls, ['move u3 team_1']);
 
+    await tester.tap(find.text('팀 공개하기'));
+    await tester.pumpAndSettle();
+    expect(backend.calls.last, 'publish');
+  });
+
+  testWidgets('검토한 뒤 신청이 바뀌면 공개하지 않고, 다시 확인하면 공개한다', (tester) async {
+    tester.view.physicalSize = const Size(1000, 2400);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
+    final backend = FakeFormation();
+    await tester.pumpWidget(screen(backend, activityIn('closed')));
+    await tester.pumpAndSettle();
+    backend.draftStream.add(FormationDraft.fromFirestore(draftDoc()));
+    await tester.pumpAndSettle();
+
+    backend.roster = 2; // someone cancels while the operator is reviewing
+    await tester.tap(find.text('팀 공개하기'));
+    await tester.pumpAndSettle();
+    expect(backend.calls.last, 'publish stale');
+    expect(find.textContaining('검토한 뒤에 신청·설정·초안이 바뀌어'), findsOneWidget);
+
+    // The screen takes a fresh review of the draft it shows; then it publishes.
     await tester.tap(find.text('팀 공개하기'));
     await tester.pumpAndSettle();
     expect(backend.calls.last, 'publish');
