@@ -17,6 +17,51 @@ class _CriterionDraft {
   bool enabled = true;
 }
 
+class _TraitItemDraft {
+  _TraitItemDraft(String text, {this.reverse = false})
+    : text = TextEditingController(text: text);
+
+  final TextEditingController text;
+  bool reverse;
+}
+
+/// One personality axis on the form (matching.traits).
+class _TraitAxisDraft {
+  _TraitAxisDraft(this.id, String label, List<_TraitItemDraft> items)
+    : label = TextEditingController(text: label),
+      items = [...items];
+
+  final String id;
+  final TextEditingController label;
+  final List<_TraitItemDraft> items;
+
+  void dispose() {
+    label.dispose();
+    for (final i in items) {
+      i.text.dispose();
+    }
+  }
+}
+
+const maxTraitAxes = 4;
+const maxTraitItems = 3;
+
+/// Starting template: three work-style axes, two items each, one reversed.
+List<_TraitAxisDraft> _traitTemplate() => [
+  _TraitAxisDraft('ext', '외향성', [
+    _TraitItemDraft('새로운 사람과 금방 친해지는 편이다'),
+    _TraitItemDraft('여럿보다 혼자 작업하는 게 편하다', reverse: true),
+  ]),
+  _TraitAxisDraft('lead', '주도성', [
+    _TraitItemDraft('모임에서 먼저 방향을 제안하는 편이다'),
+    _TraitItemDraft('정해진 역할을 따르는 게 편하다', reverse: true),
+  ]),
+  _TraitAxisDraft('plan', '계획성', [
+    _TraitItemDraft('마감보다 미리 끝내두는 편이다'),
+    _TraitItemDraft('계획 없이 바로 시작하는 편이다', reverse: true),
+  ]),
+];
+
 /// Operator form for createActivity (v7 소모임 창설). Questions picked here are
 /// locked after the first registration, so the screen says so up front.
 class CreateActivityScreen extends StatefulWidget {
@@ -49,6 +94,9 @@ class _CreateActivityScreenState extends State<CreateActivityScreen> {
   String? _type;
   bool _commonTime = false;
   bool _busy = false;
+  bool _traitsOn = true;
+  final List<_TraitAxisDraft> _axes = _traitTemplate();
+  int _axisSerial = 0;
 
   final _criteria = [
     _CriterionDraft('role', '희망 역할', 'single', ['기획', '개발', '디자인', '운영']),
@@ -78,6 +126,9 @@ class _CreateActivityScreenState extends State<CreateActivityScreen> {
     }
     for (final c in _criteria) {
       c.options.dispose();
+    }
+    for (final a in _axes) {
+      a.dispose();
     }
     super.dispose();
   }
@@ -175,7 +226,38 @@ class _CreateActivityScreenState extends State<CreateActivityScreen> {
       );
       criteria[c.key] = c.key;
     }
-    if (questions.isEmpty) {
+    final traits = <TraitAxis>[];
+    if (_traitsOn) {
+      if (_axes.isEmpty || _axes.length > maxTraitAxes) {
+        _toast('성향 축은 1~$maxTraitAxes개로 정해 주세요.');
+        return null;
+      }
+      for (var a = 0; a < _axes.length; a++) {
+        final axis = _axes[a];
+        final label = axis.label.text.trim();
+        if (label.isEmpty || label.length > 30) {
+          _toast('성향 축 이름을 1~30자로 입력해 주세요.');
+          return null;
+        }
+        if (axis.items.isEmpty || axis.items.length > maxTraitItems) {
+          _toast('$label 축에는 문항을 1~$maxTraitItems개 넣어 주세요.');
+          return null;
+        }
+        final items = <(String, bool)>[];
+        for (var i = 0; i < axis.items.length; i++) {
+          final text = axis.items[i].text.text.trim();
+          if (text.isEmpty || text.length > 120) {
+            _toast('$label 축의 문항을 1~120자로 입력해 주세요.');
+            return null;
+          }
+          final id = 'tr${a + 1}${i + 1}';
+          questions.add(ActivityQuestion(id: id, label: text, type: 'scale'));
+          items.add((id, axis.items[i].reverse));
+        }
+        traits.add(TraitAxis(id: axis.id, label: label, items: items));
+      }
+    }
+    if (criteria.isEmpty && traits.isEmpty) {
       _toast('편성에 쓸 질문을 하나 이상 골라 주세요.');
       return null;
     }
@@ -191,8 +273,124 @@ class _CreateActivityScreenState extends State<CreateActivityScreen> {
       criteria: criteria,
       method: _method,
       requireCommonTime: commonTime,
+      traits: traits,
     );
   }
+
+  void _addAxis() => setState(() {
+    _axisSerial++;
+    var id = 'ax$_axisSerial';
+    while (_axes.any((a) => a.id == id)) {
+      _axisSerial++;
+      id = 'ax$_axisSerial';
+    }
+    _axes.add(_TraitAxisDraft(id, '', [_TraitItemDraft('')]));
+  });
+
+  // Controllers are disposed after the frame that drops their fields, so the
+  // old TextFields never touch a disposed controller while rebuilding.
+  void _later(VoidCallback dispose) =>
+      WidgetsBinding.instance.addPostFrameCallback((_) => dispose());
+
+  void _removeAxis(_TraitAxisDraft axis) {
+    setState(() => _axes.remove(axis));
+    _later(axis.dispose);
+  }
+
+  void _removeItem(_TraitAxisDraft axis, _TraitItemDraft item) {
+    setState(() => axis.items.remove(item));
+    _later(item.text.dispose);
+  }
+
+  void _resetTraits() {
+    final old = [..._axes];
+    setState(() {
+      _axes
+        ..clear()
+        ..addAll(_traitTemplate());
+    });
+    _later(() {
+      for (final a in old) {
+        a.dispose();
+      }
+    });
+  }
+
+  Widget _axisEditor(int index, _TraitAxisDraft axis) => Padding(
+    key: ObjectKey(axis),
+    padding: const EdgeInsets.only(bottom: 10),
+    child: Material(
+      color: teamixBackground,
+      borderRadius: BorderRadius.circular(14),
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(12, 10, 4, 6),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Expanded(
+                  child: TextField(
+                    key: ValueKey('trait-label-${axis.id}'),
+                    controller: axis.label,
+                    decoration: InputDecoration(
+                      labelText: '성향 축 ${index + 1}',
+                      isDense: true,
+                    ),
+                  ),
+                ),
+                IconButton(
+                  tooltip: '축 삭제',
+                  onPressed: () => _removeAxis(axis),
+                  icon: const Icon(Icons.delete_outline, size: 20),
+                ),
+              ],
+            ),
+            for (final item in axis.items)
+              Padding(
+                key: ObjectKey(item),
+                padding: const EdgeInsets.only(top: 8),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: TextField(
+                        controller: item.text,
+                        style: const TextStyle(fontSize: 13),
+                        decoration: const InputDecoration(
+                          hintText: '문항 (1 전혀 아니다 ~ 5 매우 그렇다)',
+                          isDense: true,
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 6),
+                    FilterChip(
+                      label: const Text('반대 문항'),
+                      tooltip: '그렇다고 답할수록 이 성향이 낮은 문항',
+                      selected: item.reverse,
+                      onSelected: (v) => setState(() => item.reverse = v),
+                    ),
+                    IconButton(
+                      tooltip: '문항 삭제',
+                      onPressed: axis.items.length > 1
+                          ? () => _removeItem(axis, item)
+                          : null,
+                      icon: const Icon(Icons.close, size: 18),
+                    ),
+                  ],
+                ),
+              ),
+            if (axis.items.length < maxTraitItems)
+              TextButton.icon(
+                onPressed: () =>
+                    setState(() => axis.items.add(_TraitItemDraft(''))),
+                icon: const Icon(Icons.add, size: 18),
+                label: const Text('문항 추가'),
+              ),
+          ],
+        ),
+      ),
+    ),
+  );
 
   Future<void> _submit() async {
     final activity = _build();
@@ -362,6 +560,43 @@ class _CreateActivityScreenState extends State<CreateActivityScreen> {
                 '첫 신청이 들어오면 질문은 바꿀 수 없어요.',
                 style: TextStyle(fontSize: 11, color: teamixMuted),
               ),
+            ]),
+            _section('성향 분석 · AI가 팀마다 성향을 맞춰요', [
+              SwitchListTile(
+                key: const ValueKey('traits-switch'),
+                contentPadding: EdgeInsets.zero,
+                dense: true,
+                value: _traitsOn,
+                title: const Text('성향 문항으로 팀 균형 맞추기'),
+                subtitle: const Text(
+                  '참가자가 1~5점으로 답하고, 축마다 점수를 모아 팀끼리 비교해요.',
+                ),
+                onChanged: (v) => setState(() => _traitsOn = v),
+              ),
+              if (_traitsOn) ...[
+                for (var i = 0; i < _axes.length; i++)
+                  _axisEditor(i, _axes[i]),
+                Row(
+                  children: [
+                    if (_axes.length < maxTraitAxes)
+                      TextButton.icon(
+                        onPressed: _addAxis,
+                        icon: const Icon(Icons.add),
+                        label: const Text('성향 축 추가'),
+                      ),
+                    const Spacer(),
+                    TextButton(
+                      onPressed: _resetTraits,
+                      child: const Text('기본 문항으로'),
+                    ),
+                  ],
+                ),
+                const Text(
+                  '반대 문항은 점수를 뒤집어 계산해요(5점 → 1점). '
+                  '편성 결과에는 팀 평균만 보여요.',
+                  style: TextStyle(fontSize: 11, color: teamixMuted),
+                ),
+              ],
             ]),
             _section('편성 방식', [
               SegmentedButton<String>(

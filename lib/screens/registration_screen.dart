@@ -5,6 +5,9 @@ import '../models/activity.dart';
 import '../theme.dart';
 import 'group_card_palette.dart';
 
+/// Personality questions get IDs `tr<axis><item>` on the creation form.
+bool isTraitQuestion(String id) => RegExp(r'^tr\d+$').hasMatch(id);
+
 /// Survey for submitRegistration: one answer per question, keyed by its ID
 /// (option ID, list of option IDs, or 1-5). Prefilled when editing.
 class RegistrationScreen extends StatefulWidget {
@@ -111,6 +114,11 @@ class _RegistrationScreenState extends State<RegistrationScreen> {
         if (q.type == 'multiple')
           const Text(
             '여러 개 고를 수 있어요',
+            style: TextStyle(fontSize: 11, color: teamixMuted),
+          ),
+        if (isTraitQuestion(q.id))
+          const Text(
+            '1 전혀 아니다 · 3 보통 · 5 매우 그렇다',
             style: TextStyle(fontSize: 11, color: teamixMuted),
           ),
         const SizedBox(height: 10),

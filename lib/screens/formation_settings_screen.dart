@@ -67,9 +67,7 @@ class _FormationSettingsScreenState extends State<FormationSettingsScreen> {
         _teams = s.teamIds.isNotEmpty
             ? s.teamIds.length
             : (people / a.targetTeamSize).ceil().clamp(1, 100);
-        _priority = s.priority.isNotEmpty
-            ? [...s.priority]
-            : [...s.questionCriteria.values, 'size'];
+        _priority = s.priority.isNotEmpty ? [...s.priority] : s.defaultPriority;
         _method = s.method;
         _commonTime = s.requireCommonTime;
         _learningOn = s.learningEnabled;
